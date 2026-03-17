@@ -37,7 +37,7 @@ def safe_div(numerator: float, denominator: float, label: str) -> float:
     return numerator / denominator
 
 
-def default_input() -> Tuple[List[Experiment], float, float, float]:
+def default_input() -> Tuple[List[Experiment], float, float, float]: # Теперь уже не нужно
     # Default dataset equivalent to the original Excel input sheet.
     experiments = [
         Experiment(
@@ -100,7 +100,7 @@ def read_input_json(path: Path) -> Tuple[List[Experiment], float, float, float]:
                 x1=float(item["x1"]),
                 x2=float(item["x2"]),
                 x3=float(item["x3"]),
-                y=[float(item["y1"]), float(item["y2"]), float(item["y3"])],
+                y=[float(item["y1"]), float(item["y2"]), float(item["y3"])], # Может стоит сделать как x1, x2, x3?
             )
         )
 
