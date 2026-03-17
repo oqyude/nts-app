@@ -42,31 +42,42 @@ def safe_div(numerator: float, denominator: float, label: str) -> float:
     return numerator / denominator
 
 
+def _to_float(value: object, label: str) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        raw = value.strip().replace(",", ".")
+        if raw == "":
+            raise ValueError(f"Empty value for {label}.")
+        return float(raw)
+    raise ValueError(f"Invalid value for {label}: {value!r}")
+
+
 def read_input_json(path: Path) -> Tuple[List[Experiment], float, float, float]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if "experiments" not in data:
         raise ValueError("JSON must include 'experiments'.")
     experiments: List[Experiment] = []
-    for item in data["experiments"]:
+    for idx, item in enumerate(data["experiments"]):
         if "y" in item:
             raise ValueError("Use y1, y2, y3 instead of 'y' in experiments.")
         experiments.append(
             Experiment(
-                idx=int(item["idx"]),
-                delta1=float(item["delta1"]),
-                delta2=float(item["delta2"]),
-                x1=float(item["x1"]),
-                x2=float(item["x2"]),
-                x3=float(item["x3"]),
-                y1=float(item["y1"]),
-                y2=float(item["y2"]),
-                y3=float(item["y3"]),
+                idx=int(_to_float(item["idx"], f"experiments[{idx}].idx")),
+                delta1=_to_float(item["delta1"], f"experiments[{idx}].delta1"),
+                delta2=_to_float(item["delta2"], f"experiments[{idx}].delta2"),
+                x1=_to_float(item["x1"], f"experiments[{idx}].x1"),
+                x2=_to_float(item["x2"], f"experiments[{idx}].x2"),
+                x3=_to_float(item["x3"], f"experiments[{idx}].x3"),
+                y1=_to_float(item["y1"], f"experiments[{idx}].y1"),
+                y2=_to_float(item["y2"], f"experiments[{idx}].y2"),
+                y3=_to_float(item["y3"], f"experiments[{idx}].y3"),
             )
         )
 
-    g_crit = float(data["g_crit"])
-    t_crit = float(data["t_crit"])
-    f_crit = float(data["f_crit"])
+    g_crit = _to_float(data["g_crit"], "g_crit")
+    t_crit = _to_float(data["t_crit"], "t_crit")
+    f_crit = _to_float(data["f_crit"], "f_crit")
     return experiments, g_crit, t_crit, f_crit
 
 
@@ -135,7 +146,8 @@ def compute(experiments: List[Experiment], g_crit: float, t_crit: float, f_crit:
 
     f_avg = sum(r["y_avg_minus_y_sq"] for r in output_rows) / 4
     f_value = safe_div(s2_vos, f_avg, "F") if f_avg != 0 else float("inf")
-    f_result = "Hypothesis not rejected" if f_value < f_crit else "Hypothesis rejected"
+    f_result_code = "not_rejected" if f_value < f_crit else "rejected"
+    f_result = "Hypothesis not rejected" if f_result_code == "not_rejected" else "Hypothesis rejected"
 
     def format_term(coeff: float, name: str) -> str:
         sign = "+" if coeff >= 0 else "-"
@@ -161,5 +173,6 @@ def compute(experiments: List[Experiment], g_crit: float, t_crit: float, f_crit:
         "output_rows": output_rows,
         "f_avg": f_avg,
         "f_value": f_value,
+        "f_result_code": f_result_code,
         "f_result": f_result,
     }
