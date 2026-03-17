@@ -1,0 +1,57 @@
+name: Build Nuitka Windows
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Create build venv
+      run: |
+        python -m venv .venv-build
+        .venv-build\Scripts\python.exe -m pip install --upgrade pip
+
+    - name: Install build dependencies
+      run: |
+        .venv-build\Scripts\python.exe -m pip install -r requirements-build.txt
+
+    - name: Compile with Nuitka
+      shell: pwsh
+      run: |
+        .venv-build\Scripts\python.exe -m nuitka `
+          --assume-yes-for-downloads `
+          --onefile `
+          --windows-console-mode=disable `
+          --enable-plugin=tk-inter `
+          --output-dir=release `
+          --output-filename=nts-app.exe `
+          main.py
+
+    - name: List release files
+      run: dir release
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: nts-app-windows
+        path: release/nts-app.exe
+
+    - name: Create draft release and upload exe
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        draft: true
+        files: release/nts-app.exe
