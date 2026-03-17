@@ -9,19 +9,19 @@ No third-party dependencies are required.
 ## Run
 
 ```bash
-python main.py
+python main.py --input input.json
 ```
 
-To use your own input values, provide a JSON file:
+You can also run as a module:
 
 ```bash
-python main.py --input input.json
+python -m nts --input input.json
 ```
 
 To also export results as JSON:
 
 ```bash
-python main.py --json result.json
+python main.py --input input.json --json result.json
 ```
 
 ## JSON Input Format
