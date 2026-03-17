@@ -83,7 +83,6 @@ I18N = {
         "lang": "Lang:",
         "result_not_rejected": "Hypothesis not rejected",
         "result_rejected": "Hypothesis rejected",
-        "load_incomplete": "Loaded only {count} row(s) from JSON.",
     },
     "RU": {
         "title_main": "Калькулятор НТС",
@@ -128,7 +127,6 @@ I18N = {
         "lang": "Язык:",
         "result_not_rejected": "Гипотеза не отвергается",
         "result_rejected": "Гипотеза отвергается",
-        "load_incomplete": "Из JSON загружено только строк: {count}.",
     },
 }
 
@@ -305,12 +303,6 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
         self.t_crit_var.set("")
         self.f_crit_var.set("")
 
-    def _reset_entries_only(self) -> None:
-        for (row_idx, key), ent in self.entries.items():
-            ent.delete(0, tk.END)
-            if key == "idx":
-                ent.insert(0, str(row_idx + 1))
-
     def _load_from_path(self, path: Path) -> None:
         try:
             experiments, g_crit, t_crit, f_crit = read_input_json(path)
@@ -318,34 +310,34 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
             messagebox.showerror(self.t("load_error"), str(exc))
             return
 
-        self._reset_entries_only()
+        def fill_row(i: int) -> None:
+            exp = experiments[i]
+            values = {
+                "idx": exp.idx,
+                "delta1": exp.delta1,
+                "delta2": exp.delta2,
+                "x1": exp.x1,
+                "x2": exp.x2,
+                "x3": exp.x3,
+                "y1": exp.y1,
+                "y2": exp.y2,
+                "y3": exp.y3,
+            }
+            for key, val in values.items():
+                ent = self.entries[(i, key)]
+                ent.delete(0, tk.END)
+                ent.insert(0, str(val))
 
-        def fill() -> None:
-            for i, exp in enumerate(experiments[:4]):
-                values = {
-                    "idx": exp.idx,
-                    "delta1": exp.delta1,
-                    "delta2": exp.delta2,
-                    "x1": exp.x1,
-                    "x2": exp.x2,
-                    "x3": exp.x3,
-                    "y1": exp.y1,
-                    "y2": exp.y2,
-                    "y3": exp.y3,
-                }
-                for key, val in values.items():
-                    ent = self.entries[(i, key)]
-                    ent.delete(0, tk.END)
-                    ent.insert(0, str(val))
+        def fill_next(i: int) -> None:
+            if i >= min(4, len(experiments)):
+                self.g_crit_var.set(str(g_crit))
+                self.t_crit_var.set(str(t_crit))
+                self.f_crit_var.set(str(f_crit))
+                return
+            fill_row(i)
+            self.after(0, lambda: fill_next(i + 1))
 
-            self.g_crit_var.set(str(g_crit))
-            self.t_crit_var.set(str(t_crit))
-            self.f_crit_var.set(str(f_crit))
-
-            if len(experiments) < 4:
-                messagebox.showwarning(self.t("load_error"), self.t("load_incomplete").format(count=len(experiments)))
-
-        self.after_idle(fill)
+        fill_next(0)
 
     def _read_experiments(self) -> List[Experiment]:
         experiments: List[Experiment] = []
