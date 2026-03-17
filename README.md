@@ -9,19 +9,13 @@ No third-party dependencies are required.
 ## Run
 
 ```bash
-python main.py --input input.json
+python main.py
 ```
 
 You can also run as a module:
 
 ```bash
-python -m nts --input input.json
-```
-
-To also export results as JSON:
-
-```bash
-python main.py --input input.json --json result.json
+python -m nts
 ```
 
 ## JSON Input Format
@@ -39,39 +33,6 @@ python main.py --input input.json --json result.json
       "y1": 1167,
       "y2": 1238,
       "y3": 963
-    },
-    {
-      "idx": 2,
-      "delta1": -1,
-      "delta2": 1,
-      "x1": 35,
-      "x2": 35,
-      "x3": 30,
-      "y1": 991,
-      "y2": 992,
-      "y3": 849
-    },
-    {
-      "idx": 3,
-      "delta1": 1,
-      "delta2": -1,
-      "x1": 55,
-      "x2": 34.97,
-      "x3": 10,
-      "y1": 1167,
-      "y2": 1116,
-      "y3": 1135
-    },
-    {
-      "idx": 4,
-      "delta1": 1,
-      "delta2": 1,
-      "x1": 45.83,
-      "x2": 25.17,
-      "x3": 25,
-      "y1": 967,
-      "y2": 1119,
-      "y3": 1058
     }
   ],
   "g_crit": 0.7679,
@@ -79,3 +40,22 @@ python main.py --input input.json --json result.json
   "f_crit": 239
 }
 ```
+
+## Build .exe (one file)
+
+```bash
+python -m pip install pyinstaller
+python -m PyInstaller --onefile --noconsole -n nts-app --distpath release --workpath build --specpath build main.py
+```
+
+Or run the included scripts:
+
+```bash
+build.ps1
+```
+
+```bat
+build.bat
+```
+
+The executable will be in `release/nts-app.exe`.

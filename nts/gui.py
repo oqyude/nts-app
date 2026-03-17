@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 from typing import Dict, List, Tuple
 
 from .core import Experiment, compute
@@ -19,6 +19,15 @@ INPUT_COLUMNS = [
     ("y1", "y1"),
     ("y2", "y2"),
     ("y3", "y3"),
+]
+
+OUTPUT_COLUMNS = [
+    ("y_avg", "y_avg", 110),
+    ("delta1", "delta1", 80),
+    ("delta2", "delta2", 80),
+    ("y_pred", "y_pred", 120),
+    ("y_avg_minus_y", "y_avg - y", 120),
+    ("sq", "(y_avg - y)^2", 140),
 ]
 
 
@@ -42,18 +51,17 @@ def load_input_json(path: Path) -> Tuple[List[Experiment], float, float, float]:
     return experiments, float(data["g_crit"]), float(data["t_crit"]), float(data["f_crit"])
 
 
+def normalize_number(value: str) -> str:
+    return value.strip().replace(",", ".")
+
+
 class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("NTS Calculator")
         self.geometry("980x520")
 
-        self.inputs_dir = Path(__file__).resolve().parent.parent / "inputs"
-        self.input_files = sorted(self.inputs_dir.glob("*.json"))
-        if not self.input_files:
-            raise FileNotFoundError("No input JSON files found in ./inputs")
-
-        self.selected_file = tk.StringVar(value=str(self.input_files[0]))
+        self.selected_file = tk.StringVar(value="")
 
         self.entries: Dict[Tuple[int, str], tk.Entry] = {}
         self.g_crit_var = tk.StringVar()
@@ -61,30 +69,22 @@ class App(tk.Tk):
         self.f_crit_var = tk.StringVar()
 
         self._build_ui()
-        self._load_selected()
 
     def _build_ui(self) -> None:
         top = ttk.Frame(self, padding=10)
         top.pack(fill=tk.X)
 
-        ttk.Label(top, text="Input set:").pack(side=tk.LEFT)
-        combo = ttk.Combobox(
-            top,
-            values=[str(p) for p in self.input_files],
-            textvariable=self.selected_file,
-            state="readonly",
-            width=60,
-        )
-        combo.pack(side=tk.LEFT, padx=8)
-        combo.bind("<<ComboboxSelected>>", lambda _e: self._load_selected())
-
-        ttk.Button(top, text="Reload", command=self._load_selected).pack(side=tk.LEFT)
+        ttk.Label(top, text="Input file:").pack(side=tk.LEFT)
+        ttk.Entry(top, textvariable=self.selected_file, width=70, state="readonly").pack(side=tk.LEFT, padx=8)
+        ttk.Button(top, text="Browse", command=self._browse_file).pack(side=tk.LEFT)
+        ttk.Button(top, text="Clear", command=self._clear_inputs).pack(side=tk.LEFT, padx=(6, 0))
 
         grid = ttk.Frame(self, padding=(10, 0, 10, 10))
         grid.pack(fill=tk.BOTH, expand=True)
 
         for col_idx, (_, label) in enumerate(INPUT_COLUMNS):
             ttk.Label(grid, text=label).grid(row=0, column=col_idx, padx=6, pady=6)
+            grid.columnconfigure(col_idx, weight=1)
 
         for row_idx in range(4):
             for col_idx, (key, _label) in enumerate(INPUT_COLUMNS):
@@ -104,9 +104,29 @@ class App(tk.Tk):
 
         ttk.Button(footer, text="Calculate", command=self._calculate).grid(row=0, column=6, padx=12, pady=4)
 
-    def _load_selected(self) -> None:
+    def _browse_file(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Select input JSON",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        self.selected_file.set(path)
+        self._load_from_path(Path(path))
+
+    def _clear_inputs(self) -> None:
+        self.selected_file.set("")
+        for (row_idx, key), ent in self.entries.items():
+            ent.delete(0, tk.END)
+            if key == "idx":
+                ent.insert(0, str(row_idx + 1))
+        self.g_crit_var.set("")
+        self.t_crit_var.set("")
+        self.f_crit_var.set("")
+
+    def _load_from_path(self, path: Path) -> None:
         try:
-            experiments, g_crit, t_crit, f_crit = load_input_json(Path(self.selected_file.get()))
+            experiments, g_crit, t_crit, f_crit = load_input_json(path)
         except Exception as exc:
             messagebox.showerror("Load error", str(exc))
             return
@@ -136,7 +156,10 @@ class App(tk.Tk):
         experiments: List[Experiment] = []
         for i in range(4):
             def get(key: str) -> float:
-                return float(self.entries[(i, key)].get())
+                raw = normalize_number(self.entries[(i, key)].get())
+                if raw == "":
+                    raise ValueError(f"Empty value in row {i + 1}, {key}.")
+                return float(raw)
 
             experiments.append(
                 Experiment(
@@ -153,12 +176,18 @@ class App(tk.Tk):
             )
         return experiments
 
+    def _read_crit(self) -> Tuple[float, float, float]:
+        g_raw = normalize_number(self.g_crit_var.get())
+        t_raw = normalize_number(self.t_crit_var.get())
+        f_raw = normalize_number(self.f_crit_var.get())
+        if g_raw == "" or t_raw == "" or f_raw == "":
+            raise ValueError("G_crit, t_crit and F_crit must be filled.")
+        return float(g_raw), float(t_raw), float(f_raw)
+
     def _calculate(self) -> None:
         try:
             experiments = self._read_experiments()
-            g_crit = float(self.g_crit_var.get())
-            t_crit = float(self.t_crit_var.get())
-            f_crit = float(self.f_crit_var.get())
+            g_crit, t_crit, f_crit = self._read_crit()
             result = compute(experiments, g_crit, t_crit, f_crit)
         except Exception as exc:
             messagebox.showerror("Calculation error", str(exc))
@@ -169,7 +198,7 @@ class App(tk.Tk):
     def _show_output(self, result: Dict[str, object]) -> None:
         win = tk.Toplevel(self)
         win.title("Output")
-        win.geometry("820x420")
+        win.geometry("920x460")
 
         top = ttk.Frame(win, padding=10)
         top.pack(fill=tk.X)
@@ -182,14 +211,28 @@ class App(tk.Tk):
         ttk.Label(mid, text=f"t1={t['t1']:.4f} ({t['sign_b1']})").grid(row=0, column=1, padx=6, pady=2)
         ttk.Label(mid, text=f"t2={t['t2']:.4f} ({t['sign_b2']})").grid(row=0, column=2, padx=6, pady=2)
 
-        tree = ttk.Treeview(win, columns=("y_avg", "delta1", "delta2", "y_pred", "y_avg_minus_y", "sq"), show="headings")
-        tree.heading("y_avg", text="y_avg")
-        tree.heading("delta1", text="delta1")
-        tree.heading("delta2", text="delta2")
-        tree.heading("y_pred", text="y_pred")
-        tree.heading("y_avg_minus_y", text="y_avg - y")
-        tree.heading("sq", text="(y_avg - y)^2")
-        tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        table = ttk.Frame(win)
+        table.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        tree = ttk.Treeview(
+            table,
+            columns=[col[0] for col in OUTPUT_COLUMNS],
+            show="headings",
+        )
+        for key, label, width in OUTPUT_COLUMNS:
+            tree.heading(key, text=label)
+            tree.column(key, width=width, minwidth=width, anchor="center", stretch=True)
+
+        vsb = ttk.Scrollbar(table, orient="vertical", command=tree.yview)
+        hsb = ttk.Scrollbar(table, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+
+        tree.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+
+        table.columnconfigure(0, weight=1)
+        table.rowconfigure(0, weight=1)
 
         for row in result["output_rows"]:
             tree.insert(
