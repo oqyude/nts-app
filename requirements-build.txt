@@ -1,2 +1,1 @@
-nuitka
-tkinterdnd2
+nuitka[onefile]

@@ -10,12 +10,5 @@ if not exist "%PYTHON%" (
 )
 
 "%PYTHON%" -m pip install -r "%ROOT%requirements-build.txt"
-"%PYTHON%" -m nuitka --onefile --windows-disable-console --enable-plugin=tk-inter --output-dir="%ROOT%release" --output-filename=nts-app.exe "%ROOT%main.py"
-
-if "%NTS_USE_UPX%"=="1" (
-  where upx >nul 2>nul
-  if not errorlevel 1 (
-    upx -9 "%ROOT%release\nts-app.exe"
-  )
-)
+"%PYTHON%" -m nuitka --onefile --windows-console-mode=disable --enable-plugin=tk-inter --output-dir="%ROOT%release" --output-filename=nts-app.exe "%ROOT%main.py"
 endlocal

@@ -61,16 +61,4 @@ build.bat
 
 The executable will be in `release/nts-app.exe`.
 
-### Optional size reduction (UPX)
-
-If you have UPX installed, you can set `NTS_USE_UPX=1` to compress the exe. This can reduce size but may trigger antivirus false positives on some systems.
-
-```bash
-set NTS_USE_UPX=1
-build.bat
-```
-
-```powershell
-$env:NTS_USE_UPX = "1"
-./build.ps1
-```
+Note: If the target machine is missing VC++ runtime, Windows may ask to install it.

@@ -9,9 +9,4 @@ if (-not (Test-Path $python)) {
 }
 
 & $python -m pip install -r (Join-Path $root "requirements-build.txt")
-& $python -m nuitka --onefile --windows-disable-console --enable-plugin=tk-inter --output-dir=(Join-Path $root "release") --output-filename=nts-app.exe (Join-Path $root "main.py")
-
-$upx = Get-Command upx -ErrorAction SilentlyContinue
-if ($env:NTS_USE_UPX -eq "1" -and $upx) {
-  & $upx.Path -9 (Join-Path $root "release\nts-app.exe")
-}
+& $python -m nuitka --onefile --windows-console-mode=disable --enable-plugin=tk-inter --output-dir=(Join-Path $root "release") --output-filename=nts-app.exe (Join-Path $root "main.py")
