@@ -1,35 +1,21 @@
 @echo off
+setlocal
 
-REM --- create venv if missing ---
-if not exist .venv (
-    echo Creating virtual environment...
-    python -m venv .venv
+set ROOT=%~dp0
+set VENV=%ROOT%.venv-build
+set PYTHON=%VENV%\Scripts\python.exe
+
+if not exist "%PYTHON%" (
+  python -m venv "%VENV%"
 )
 
-set PYTHON=.venv\Scripts\python.exe
+"%PYTHON%" -m pip install -r "%ROOT%requirements-build.txt"
+"%PYTHON%" -m nuitka --onefile --windows-disable-console --enable-plugin=tk-inter --output-dir="%ROOT%release" --output-filename=nts-app.exe "%ROOT%main.py"
 
-REM --- upgrade pip ---
-%PYTHON% -m pip install --upgrade pip
-
-REM --- install deps only if requirements.txt exists ---
-if exist requirements.txt (
-    echo Installing dependencies...
-    %PYTHON% -m pip install -r requirements.txt
-) else (
-    echo requirements.txt not found, skipping dependencies
+if "%NTS_USE_UPX%"=="1" (
+  where upx >nul 2>nul
+  if not errorlevel 1 (
+    upx -9 "%ROOT%release\nts-app.exe"
+  )
 )
-
-REM --- ensure pyinstaller ---
-%PYTHON% -m pip install pyinstaller
-
-REM --- build exe ---
-%PYTHON% -m PyInstaller ^
-    --onefile ^
-    --noconsole ^
-    -n nts-app ^
-    --distpath release ^
-    --workpath build ^
-    --specpath build ^
-    main.py
-
-echo Build finished.
+endlocal

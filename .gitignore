@@ -8,12 +8,15 @@ __pycache__/
 # Envs
 .venv/
 .venv*/
+.venv-build/
 
 # Build artifacts
 build/
 dist/
 release/
 *.spec
+*.build/
+*.dist/
 
 # Caches
 .pytest_cache/

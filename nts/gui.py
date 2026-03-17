@@ -1,12 +1,20 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from typing import Dict, List, Tuple
+from urllib.parse import unquote
 
-from .core import Experiment, compute
+from .core import Experiment, compute, read_input_json
+
+try:
+    from tkinterdnd2 import DND_FILES, TkinterDnD
+    DND_AVAILABLE = True
+except Exception:
+    DND_AVAILABLE = False
+    DND_FILES = None
+    TkinterDnD = None
 
 
 INPUT_COLUMNS = [
@@ -31,31 +39,11 @@ OUTPUT_COLUMNS = [
 ]
 
 
-def load_input_json(path: Path) -> Tuple[List[Experiment], float, float, float]:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    experiments: List[Experiment] = []
-    for item in data["experiments"]:
-        experiments.append(
-            Experiment(
-                idx=int(item["idx"]),
-                delta1=float(item["delta1"]),
-                delta2=float(item["delta2"]),
-                x1=float(item["x1"]),
-                x2=float(item["x2"]),
-                x3=float(item["x3"]),
-                y1=float(item["y1"]),
-                y2=float(item["y2"]),
-                y3=float(item["y3"]),
-            )
-        )
-    return experiments, float(data["g_crit"]), float(data["t_crit"]), float(data["f_crit"])
-
-
 def normalize_number(value: str) -> str:
     return value.strip().replace(",", ".")
 
 
-class App(tk.Tk):
+class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
     def __init__(self) -> None:
         super().__init__()
         self.title("NTS Calculator")
@@ -68,16 +56,24 @@ class App(tk.Tk):
         self.t_crit_var = tk.StringVar()
         self.f_crit_var = tk.StringVar()
 
+        self.file_entry: ttk.Entry
         self._build_ui()
+
+        if DND_AVAILABLE:
+            self._setup_dnd()
 
     def _build_ui(self) -> None:
         top = ttk.Frame(self, padding=10)
         top.pack(fill=tk.X)
 
         ttk.Label(top, text="Input file:").pack(side=tk.LEFT)
-        ttk.Entry(top, textvariable=self.selected_file, width=70, state="readonly").pack(side=tk.LEFT, padx=8)
+        self.file_entry = ttk.Entry(top, textvariable=self.selected_file, width=70, state="readonly")
+        self.file_entry.pack(side=tk.LEFT, padx=8)
         ttk.Button(top, text="Browse", command=self._browse_file).pack(side=tk.LEFT)
         ttk.Button(top, text="Clear", command=self._clear_inputs).pack(side=tk.LEFT, padx=(6, 0))
+
+        if not DND_AVAILABLE:
+            ttk.Label(top, text="(Install tkinterdnd2 for drag & drop)").pack(side=tk.LEFT, padx=8)
 
         grid = ttk.Frame(self, padding=(10, 0, 10, 10))
         grid.pack(fill=tk.BOTH, expand=True)
@@ -104,6 +100,39 @@ class App(tk.Tk):
 
         ttk.Button(footer, text="Calculate", command=self._calculate).grid(row=0, column=6, padx=12, pady=4)
 
+    def _setup_dnd(self) -> None:
+        assert DND_FILES is not None
+        self.drop_target_register(DND_FILES)
+        self.dnd_bind("<<Drop>>", self._on_drop)
+        self.file_entry.drop_target_register(DND_FILES)
+        self.file_entry.dnd_bind("<<Drop>>", self._on_drop)
+
+    def _extract_path(self, data: str) -> str:
+        raw = data.strip()
+        if raw.startswith("{"):
+            end = raw.find("}")
+            if end != -1:
+                raw = raw[1:end]
+        elif " " in raw:
+            raw = raw.split(" ", 1)[0]
+
+        raw = unquote(raw)
+        if raw.startswith("file://"):
+            raw = raw[7:]
+        raw = raw.lstrip("/")
+        return raw
+
+    def _on_drop(self, event: tk.Event) -> None:  # type: ignore[override]
+        path = self._extract_path(getattr(event, "data", ""))
+        if not path:
+            return
+        p = Path(path)
+        if p.suffix.lower() != ".json":
+            messagebox.showerror("Load error", "Please drop a .json file.")
+            return
+        self.selected_file.set(str(p))
+        self._load_from_path(p)
+
     def _browse_file(self) -> None:
         path = filedialog.askopenfilename(
             title="Select input JSON",
@@ -126,7 +155,7 @@ class App(tk.Tk):
 
     def _load_from_path(self, path: Path) -> None:
         try:
-            experiments, g_crit, t_crit, f_crit = load_input_json(path)
+            experiments, g_crit, t_crit, f_crit = read_input_json(path)
         except Exception as exc:
             messagebox.showerror("Load error", str(exc))
             return
