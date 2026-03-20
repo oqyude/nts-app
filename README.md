@@ -4,7 +4,13 @@ This project reproduces the Excel calculations in pure Python, without any Excel
 
 ## Setup
 
-No third-party dependencies are required for normal run.
+For JSON input only, no third-party dependencies are required.
+
+For Excel import (.xlsx/.xlsm):
+
+```bash
+python -m pip install openpyxl
+```
 
 Optional for drag & drop:
 
@@ -46,6 +52,20 @@ python -m nts
   "f_crit": 239
 }
 ```
+
+## Excel Input Format
+
+The workbook should contain:
+
+- Sheet `experiments` (or the first sheet) with a header row and columns:
+  `idx`, `delta1`, `delta2`, `x1`, `x2`, `x3`, `y1`, `y2`, `y3`
+- Sheet `criteria` (or `crit`) with a header row:
+  `g_crit`, `t_crit`, `f_crit` and values on the next row
+
+If the criteria sheet is missing, the loader also looks for key/value pairs in the
+first two columns of the `experiments` sheet using labels `g_crit`, `t_crit`, `f_crit`.
+
+See the sample file: `sample_input.xlsx`.
 
 ## Build .exe (Nuitka)
 

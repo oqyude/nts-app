@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict
 
-from .core import compute, read_input_json
+from .core import compute, read_input_file
 
 
 def print_report(result: Dict[str, Any]) -> None:
@@ -43,14 +43,14 @@ def print_report(result: Dict[str, Any]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compute results without Excel dependencies.")
-    parser.add_argument("--input", dest="input_path", required=True, help="Path to JSON input file.")
+    parser.add_argument("--input", dest="input_path", required=True, help="Path to JSON or XLSX input file.")
     parser.add_argument("--json", dest="json_path", help="Write result JSON to this path.")
     args = parser.parse_args()
 
     path = Path(args.input_path)
     if not path.exists():
-        raise FileNotFoundError(f"Input JSON not found: {path}")
-    experiments, g_crit, t_crit, f_crit = read_input_json(path)
+        raise FileNotFoundError(f"Input file not found: {path}")
+    experiments, g_crit, t_crit, f_crit = read_input_file(path)
     result = compute(experiments, g_crit, t_crit, f_crit)
     print_report(result)
 

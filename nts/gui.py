@@ -6,7 +6,7 @@ from tkinter import ttk, messagebox, filedialog
 from typing import Dict, List, Tuple
 from urllib.parse import unquote
 
-from .core import Experiment, compute, read_input_json
+from .core import Experiment, compute, read_input_file
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -29,15 +29,6 @@ INPUT_COLUMNS = [
     ("y3", "y3"),
 ]
 
-OUTPUT_COLUMNS = [
-    ("y_avg", "y_avg", 110),
-    ("delta1", "delta1", 80),
-    ("delta2", "delta2", 80),
-    ("y_pred", "y_pred", 120),
-    ("y_avg_minus_y", "y_avg_minus_y", 140),
-    ("sq", "y_avg_minus_y_sq", 150),
-]
-
 
 I18N = {
     "EN": {
@@ -55,13 +46,13 @@ I18N = {
         "dnd_hint": "(Install tkinterdnd2 for drag & drop)",
         "load_error": "Load error",
         "calc_error": "Calculation error",
-        "drop_json": "Please drop a .json file.",
+        "drop_json": "Please drop a .json or .xlsx file.",
         "empty_value": "Empty value in row {row}, {key}.",
         "crit_required": "G_crit, t_crit and F_crit must be filled.",
         "headers": {
             "no": "No",
-            "delta1": "delta1",
-            "delta2": "delta2",
+            "delta1": "δ1",
+            "delta2": "δ2",
             "x1": "x1",
             "x2": "x2",
             "x3": "x3",
@@ -69,20 +60,25 @@ I18N = {
             "y2": "y2",
             "y3": "y3",
         },
-        "out_headers": {
-            "y_avg": "y_avg",
-            "delta1": "delta1",
-            "delta2": "delta2",
-            "y_pred": "y_pred",
-            "y_avg_minus_y": "y_avg - y",
-            "y_avg_minus_y_sq": "(y_avg - y)^2",
-        },
-        "t0": "t0",
-        "t1": "t1",
-        "t2": "t2",
+        "t0": "b0 (t)",
+        "t1": "b1 (t)",
+        "t2": "b2 (t)",
+        "b0v": "b0 (v)",
+        "b1v": "b1 (v)",
+        "b2v": "b2 (v)",
         "lang": "Lang:",
         "result_not_rejected": "Hypothesis not rejected",
         "result_rejected": "Hypothesis rejected",
+        "delta1_sym": "δ1",
+        "delta2_sym": "δ2",
+        "grubbs_title": "Grubbs criterion",
+        "grubbs_row": "Experiment {row}: G={g:.4f} {cmp} G_crit={gcrit:.4f} ({status})",
+        "fisher_title": "Fisher criterion",
+        "fisher_cmp": "F={f:.4f} {cmp} F_crit={fcrit:.4f}",
+        "cmp_le": "<=",
+        "cmp_gt": ">",
+        "status_ok": "OK",
+        "status_bad": "not OK",
     },
     "RU": {
         "title_main": "Калькулятор НТС",
@@ -99,7 +95,7 @@ I18N = {
         "dnd_hint": "(Установите tkinterdnd2 для drag & drop)",
         "load_error": "Ошибка загрузки",
         "calc_error": "Ошибка расчета",
-        "drop_json": "Перетащите файл .json.",
+        "drop_json": "Перетащите файл .json или .xlsx.",
         "empty_value": "Пустое значение в строке {row}, {key}.",
         "crit_required": "Заполните G_крит, t_крит и F_крит.",
         "headers": {
@@ -113,20 +109,25 @@ I18N = {
             "y2": "y2",
             "y3": "y3",
         },
-        "out_headers": {
-            "y_avg": "y_ср",
-            "delta1": "δ1",
-            "delta2": "δ2",
-            "y_pred": "y",
-            "y_avg_minus_y": "y_ср - y",
-            "y_avg_minus_y_sq": "(y_ср - y)^2",
-        },
-        "t0": "t0",
-        "t1": "t1",
-        "t2": "t2",
+        "t0": "b0 (t)",
+        "t1": "b1 (t)",
+        "t2": "b2 (t)",
+        "b0v": "b0 (в)",
+        "b1v": "b1 (в)",
+        "b2v": "b2 (в)",
         "lang": "Язык:",
         "result_not_rejected": "Гипотеза не отвергается",
         "result_rejected": "Гипотеза отвергается",
+        "delta1_sym": "δ1",
+        "delta2_sym": "δ2",
+        "grubbs_title": "Критерий Граббса",
+        "grubbs_row": "Опыт {row}: G={g:.4f} {cmp} G_крит={gcrit:.4f} ({status})",
+        "fisher_title": "Критерий Фишера",
+        "fisher_cmp": "F={f:.4f} {cmp} F_крит={fcrit:.4f}",
+        "cmp_le": "<=",
+        "cmp_gt": ">",
+        "status_ok": "OK",
+        "status_bad": "не OK",
     },
 }
 
@@ -138,6 +139,7 @@ def normalize_number(value: str) -> str:
 class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
     def __init__(self) -> None:
         super().__init__()
+        self.geometry("980x520")
         self.lang = tk.StringVar(value="RU")
 
         self.selected_file = tk.StringVar(value="")
@@ -172,9 +174,6 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
 
     def t_header(self, key: str) -> str:
         return I18N[self.lang.get()]["headers"][key]
-
-    def t_out_header(self, key: str) -> str:
-        return I18N[self.lang.get()]["out_headers"][key]
 
     def _build_ui(self) -> None:
         top = ttk.Frame(self, padding=10)
@@ -277,7 +276,7 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
         if not path:
             return
         p = Path(path)
-        if p.suffix.lower() != ".json":
+        if p.suffix.lower() not in {".json", ".xlsx", ".xlsm"}:
             messagebox.showerror(self.t("load_error"), self.t("drop_json"))
             return
         self.selected_file.set(str(p))
@@ -286,7 +285,7 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
     def _browse_file(self) -> None:
         path = filedialog.askopenfilename(
             title=self.t("input_file"),
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+            filetypes=[("JSON or Excel files", "*.json *.xlsx *.xlsm"), ("All files", "*.*")],
         )
         if not path:
             return
@@ -305,10 +304,16 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
 
     def _load_from_path(self, path: Path) -> None:
         try:
-            experiments, g_crit, t_crit, f_crit = read_input_json(path)
+            experiments, g_crit, t_crit, f_crit = read_input_file(path)
         except Exception as exc:
             messagebox.showerror(self.t("load_error"), str(exc))
             return
+
+        for (row_idx, key), ent in self.entries.items():
+            ent.delete(0, tk.END)
+            if key == "idx":
+                ent.insert(0, str(row_idx + 1))
+        self.update_idletasks()
 
         def fill_row(i: int) -> None:
             exp = experiments[i]
@@ -335,9 +340,10 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
                 self.f_crit_var.set(str(f_crit))
                 return
             fill_row(i)
-            self.after(0, lambda: fill_next(i + 1))
+            self.update_idletasks()
+            self.after(1, lambda: fill_next(i + 1))
 
-        fill_next(0)
+        self.after(1, lambda: fill_next(0))
 
     def _read_experiments(self) -> List[Experiment]:
         experiments: List[Experiment] = []
@@ -385,60 +391,54 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
     def _show_output(self, result: Dict[str, object]) -> None:
         win = tk.Toplevel(self)
         win.title(self.t("title_output"))
-        win.geometry("920x460")
+        win.geometry("760x520")
+
+        coeffs = result["coefficients"]
+        delta1 = self.t("delta1_sym")
+        delta2 = self.t("delta2_sym")
+        equation = _format_equation(coeffs["b0"], coeffs["b1"], coeffs["b2"], delta1, delta2)
 
         top = ttk.Frame(win, padding=10)
         top.pack(fill=tk.X)
-        ttk.Label(top, text=result["equation"]).pack(anchor="w")
+        ttk.Label(top, text=equation).pack(anchor="w")
 
-        mid = ttk.Frame(win, padding=(10, 0, 10, 10))
+        mid = ttk.Frame(win, padding=(10, 0, 10, 6))
         mid.pack(fill=tk.X)
         t = result["t_tests"]
-        ttk.Label(mid, text=f"{self.t('t0')}={t['t0']:.4f} ({t['sign_b0']})").grid(row=0, column=0, padx=6, pady=2)
-        ttk.Label(mid, text=f"{self.t('t1')}={t['t1']:.4f} ({t['sign_b1']})").grid(row=0, column=1, padx=6, pady=2)
-        ttk.Label(mid, text=f"{self.t('t2')}={t['t2']:.4f} ({t['sign_b2']})").grid(row=0, column=2, padx=6, pady=2)
+        b_v = result["coefficients_v"]
 
-        table = ttk.Frame(win)
-        table.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        ttk.Label(mid, text=self.t("t0") + f" = {t['t0']:.4f} ({t['sign_b0']})").grid(row=0, column=0, sticky="w", padx=6, pady=2)
+        ttk.Label(mid, text=self.t("b0v") + f" = {b_v['b0']:.6g}").grid(row=0, column=1, sticky="w", padx=20, pady=2)
 
-        tree = ttk.Treeview(
-            table,
-            columns=[col[0] for col in OUTPUT_COLUMNS],
-            show="headings",
-        )
-        for key, _label_key, width in OUTPUT_COLUMNS:
-            tree.heading(key, text=self.t_out_header(_label_key))
-            tree.column(key, width=width, minwidth=width, anchor="center", stretch=True)
+        ttk.Label(mid, text=self.t("t1") + f" = {t['t1']:.4f} ({t['sign_b1']})").grid(row=1, column=0, sticky="w", padx=6, pady=2)
+        ttk.Label(mid, text=self.t("b1v") + f" = {b_v['b1']:.6g}").grid(row=1, column=1, sticky="w", padx=20, pady=2)
 
-        vsb = ttk.Scrollbar(table, orient="vertical", command=tree.yview)
-        hsb = ttk.Scrollbar(table, orient="horizontal", command=tree.xview)
-        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        ttk.Label(mid, text=self.t("t2") + f" = {t['t2']:.4f} ({t['sign_b2']})").grid(row=2, column=0, sticky="w", padx=6, pady=2)
+        ttk.Label(mid, text=self.t("b2v") + f" = {b_v['b2']:.6g}").grid(row=2, column=1, sticky="w", padx=20, pady=2)
 
-        tree.grid(row=0, column=0, sticky="nsew")
-        vsb.grid(row=0, column=1, sticky="ns")
-        hsb.grid(row=1, column=0, sticky="ew")
-
-        table.columnconfigure(0, weight=1)
-        table.rowconfigure(0, weight=1)
-
-        for row in result["output_rows"]:
-            tree.insert(
-                "",
-                "end",
-                values=(
-                    f"{row['y_avg']:.6g}",
-                    f"{row['delta1']:.6g}",
-                    f"{row['delta2']:.6g}",
-                    f"{row['y_pred']:.6g}",
-                    f"{row['y_avg_minus_y']:.6g}",
-                    f"{row['y_avg_minus_y_sq']:.6g}",
-                ),
+        grubbs = ttk.LabelFrame(win, text=self.t("grubbs_title"), padding=(10, 6, 10, 6))
+        grubbs.pack(fill=tk.X, padx=10, pady=(4, 6))
+        for i, g in enumerate(result["g_tests"]):
+            cmp_sign = self.t("cmp_le") if g["g"] <= result["g_crit"] else self.t("cmp_gt")
+            status = self.t("status_ok") if g["g"] <= result["g_crit"] else self.t("status_bad")
+            line = self.t("grubbs_row").format(
+                row=g["row"],
+                g=g["g"],
+                cmp=cmp_sign,
+                gcrit=result["g_crit"],
+                status=status,
             )
+            ttk.Label(grubbs, text=line).grid(row=i, column=0, sticky="w", pady=1)
 
-        bottom = ttk.Frame(win, padding=(10, 0, 10, 10))
-        bottom.pack(fill=tk.X)
-        ttk.Label(bottom, text=f"{self.t('f_avg')}={result['f_avg']:.6g}").pack(side=tk.LEFT, padx=6)
-        ttk.Label(bottom, text=f"{self.t('f_value')}={result['f_value']:.6g}").pack(side=tk.LEFT, padx=6)
+        fisher = ttk.LabelFrame(win, text=self.t("fisher_title"), padding=(10, 6, 10, 6))
+        fisher.pack(fill=tk.X, padx=10, pady=(2, 10))
+        cmp_sign = self.t("cmp_le") if result["f_value"] <= result["f_crit"] else self.t("cmp_gt")
+        fisher_line = self.t("fisher_cmp").format(
+            f=result["f_value"],
+            cmp=cmp_sign,
+            fcrit=result["f_crit"],
+        )
+        ttk.Label(fisher, text=fisher_line).grid(row=0, column=0, sticky="w", pady=1)
 
         res_code = result.get("f_result_code")
         if res_code == "not_rejected":
@@ -447,13 +447,45 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
             res_text = self.t("result_rejected")
         else:
             res_text = str(result.get("f_result", ""))
-        ttk.Label(bottom, text=res_text).pack(side=tk.LEFT, padx=6)
+        ttk.Label(fisher, text=res_text).grid(row=1, column=0, sticky="w", pady=2)
+
+    def _apply_lang(self) -> None:
+        self.title(self.t("title_main"))
+        self.label_input_file.config(text=self.t("input_file"))
+        self.btn_browse.config(text=self.t("browse"))
+        self.btn_clear.config(text=self.t("clear"))
+        self.btn_calc.config(text=self.t("calculate"))
+        self.label_g.config(text=self.t("g_crit"))
+        self.label_t.config(text=self.t("t_crit"))
+        self.label_f.config(text=self.t("f_crit"))
+        self.lang_label.config(text=self.t("lang"))
+        if self.label_dnd_hint is not None:
+            self.label_dnd_hint.config(text=self.t("dnd_hint"))
+
+        for (idx, (_key, header_key)) in enumerate(INPUT_COLUMNS):
+            self.header_labels[idx].config(text=self.t_header(header_key))
+
+    def _format_equation(self, b0: float, b1: float, b2: float) -> str:
+        delta1 = self.t("delta1_sym")
+        delta2 = self.t("delta2_sym")
+        return _format_equation(b0, b1, b2, delta1, delta2)
+
+
+def _format_equation(b0: float, b1: float, b2: float, d1: str, d2: str) -> str:
+    def term(value: float, name: str) -> str:
+        sign = "+" if value >= 0 else "-"
+        return f" {sign} {abs(value):.2f}*{name}"
+
+    return f"Y = {b0:.2f}{term(b1, d1)}{term(b2, d2)}"
+
+
+if __name__ == "__main__":
+    app = App()
+    app.mainloop()
+
 
 
 def main() -> None:
     app = App()
     app.mainloop()
 
-
-if __name__ == "__main__":
-    main()

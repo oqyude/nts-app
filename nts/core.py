@@ -3,8 +3,14 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
+
+try:
+    import openpyxl
+except Exception:
+    openpyxl = None
 
 
 @dataclass
@@ -53,10 +59,54 @@ def _to_float(value: object, label: str) -> float:
     raise ValueError(f"Invalid value for {label}: {value!r}")
 
 
-def read_input_json(path: Path) -> Tuple[List[Experiment], float, float, float]:
-    data = json.loads(path.read_text(encoding="utf-8"))
+def _round3(value: float) -> float:
+    return float(Decimal(str(value)).quantize(Decimal("0.000"), rounding=ROUND_HALF_UP))
+
+
+EXPECTED_COLUMNS = ["idx", "delta1", "delta2", "x1", "x2", "x3", "y1", "y2", "y3"]
+
+_HEADER_ALIASES = {
+    "idx": ["idx", "no", "n", "num", "number"],
+    "delta1": ["delta1", "d1", "delta-1", "delta_1", "delta 1"],
+    "delta2": ["delta2", "d2", "delta-2", "delta_2", "delta 2"],
+    "x1": ["x1"],
+    "x2": ["x2"],
+    "x3": ["x3"],
+    "y1": ["y1"],
+    "y2": ["y2"],
+    "y3": ["y3"],
+}
+
+_CRIT_ALIASES = {
+    "g_crit": ["g_crit", "gcrit", "g-crit", "g crit"],
+    "t_crit": ["t_crit", "tcrit", "t-crit", "t crit"],
+    "f_crit": ["f_crit", "fcrit", "f-crit", "f crit"],
+}
+
+
+def _normalize_header(value: object) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip().lower()
+    return text.replace(" ", "").replace("_", "").replace("-", "")
+
+
+_HEADER_MAP = {
+    _normalize_header(alias): key
+    for key, aliases in _HEADER_ALIASES.items()
+    for alias in aliases
+}
+
+_CRIT_MAP = {
+    _normalize_header(alias): key
+    for key, aliases in _CRIT_ALIASES.items()
+    for alias in aliases
+}
+
+
+def _parse_input_data(data: Dict[str, Any]) -> Tuple[List[Experiment], float, float, float]:
     if "experiments" not in data:
-        raise ValueError("JSON must include 'experiments'.")
+        raise ValueError("Input must include 'experiments'.")
     experiments: List[Experiment] = []
     for idx, item in enumerate(data["experiments"]):
         if "y" in item:
@@ -79,6 +129,118 @@ def read_input_json(path: Path) -> Tuple[List[Experiment], float, float, float]:
     t_crit = _to_float(data["t_crit"], "t_crit")
     f_crit = _to_float(data["f_crit"], "f_crit")
     return experiments, g_crit, t_crit, f_crit
+
+
+def read_input_json(path: Path) -> Tuple[List[Experiment], float, float, float]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return _parse_input_data(data)
+
+
+def _iter_rows(ws: "openpyxl.worksheet.worksheet.Worksheet") -> Iterable[List[object]]:  # type: ignore[name-defined]
+    for row in ws.iter_rows(values_only=True):
+        yield list(row)
+
+
+def _read_experiments_sheet(ws: "openpyxl.worksheet.worksheet.Worksheet") -> List[Dict[str, object]]:  # type: ignore[name-defined]
+    rows = list(_iter_rows(ws))
+    if not rows:
+        raise ValueError("Excel sheet is empty.")
+
+    header_row = rows[0]
+    column_map: Dict[int, str] = {}
+    for idx, cell in enumerate(header_row):
+        key = _HEADER_MAP.get(_normalize_header(cell))
+        if key:
+            column_map[idx] = key
+
+    missing = [key for key in EXPECTED_COLUMNS if key not in column_map.values()]
+    if missing:
+        missing_str = ", ".join(missing)
+        raise ValueError(f"Excel header missing columns: {missing_str}.")
+
+    experiments: List[Dict[str, object]] = []
+    for row in rows[1:]:
+        if all(cell is None or str(cell).strip() == "" for cell in row):
+            continue
+        item: Dict[str, object] = {}
+        for col_idx, key in column_map.items():
+            item[key] = row[col_idx] if col_idx < len(row) else None
+        experiments.append(item)
+    return experiments
+
+
+def _read_criteria_from_sheet(
+    ws: "openpyxl.worksheet.worksheet.Worksheet",
+) -> Dict[str, object]:  # type: ignore[name-defined]
+    rows = list(_iter_rows(ws))
+    if not rows:
+        return {}
+
+    header = rows[0]
+    header_map: Dict[int, str] = {}
+    for idx, cell in enumerate(header):
+        key = _CRIT_MAP.get(_normalize_header(cell))
+        if key:
+            header_map[idx] = key
+
+    if header_map and len(rows) > 1:
+        data_row = rows[1]
+        data: Dict[str, object] = {}
+        for col_idx, key in header_map.items():
+            if col_idx < len(data_row):
+                data[key] = data_row[col_idx]
+        if set(data.keys()) == set(_CRIT_ALIASES.keys()):
+            return data
+
+    data: Dict[str, object] = {}
+    for row in rows:
+        if not row:
+            continue
+        key = _CRIT_MAP.get(_normalize_header(row[0]))
+        if key and len(row) > 1:
+            data[key] = row[1]
+    return data
+
+
+def read_input_xlsx(path: Path) -> Tuple[List[Experiment], float, float, float]:
+    if openpyxl is None:
+        raise RuntimeError("openpyxl is required for Excel import. Install it with: python -m pip install openpyxl")
+
+    wb = openpyxl.load_workbook(path, data_only=True)
+    exp_ws = wb["experiments"] if "experiments" in wb.sheetnames else wb.active
+    experiments = _read_experiments_sheet(exp_ws)
+
+    crit_ws = None
+    if "criteria" in wb.sheetnames:
+        crit_ws = wb["criteria"]
+    elif "crit" in wb.sheetnames:
+        crit_ws = wb["crit"]
+
+    crit_data = _read_criteria_from_sheet(crit_ws) if crit_ws is not None else {}
+    if not crit_data:
+        crit_data = _read_criteria_from_sheet(exp_ws)
+
+    missing = [key for key in _CRIT_ALIASES.keys() if key not in crit_data]
+    if missing:
+        missing_str = ", ".join(missing)
+        raise ValueError(f"Excel input missing criteria: {missing_str}.")
+
+    data: Dict[str, Any] = {
+        "experiments": experiments,
+        "g_crit": crit_data["g_crit"],
+        "t_crit": crit_data["t_crit"],
+        "f_crit": crit_data["f_crit"],
+    }
+    return _parse_input_data(data)
+
+
+def read_input_file(path: Path) -> Tuple[List[Experiment], float, float, float]:
+    ext = path.suffix.lower()
+    if ext == ".json":
+        return read_input_json(path)
+    if ext in {".xlsx", ".xlsm"}:
+        return read_input_xlsx(path)
+    raise ValueError(f"Unsupported input format: {path.suffix}")
 
 
 def compute(experiments: List[Experiment], g_crit: float, t_crit: float, f_crit: float) -> Dict[str, Any]:
@@ -114,10 +276,13 @@ def compute(experiments: List[Experiment], g_crit: float, t_crit: float, f_crit:
     s2_vos = sum(squares) / 8
     s_v = math.sqrt(s2_vos / 12)
 
-    b0_t = (b0 - b1 * z1_avg / pz1 - b2 * z2_avg / pz2)
-    t0 = abs(b0_t) / s_v
-    t1 = abs(b1 / pz1) / s_v
-    t2 = abs(b2 / pz2) / s_v
+    b0_v = (b0 - b1 * z1_avg / pz1 - b2 * z2_avg / pz2)
+    b1_v = b1 / pz1
+    b2_v = b2 / pz2
+
+    t0 = abs(b0_v) / s_v
+    t1 = abs(b1_v) / s_v
+    t2 = abs(b2_v) / s_v
 
     sign_b0 = "+" if t0 > t_crit else " -"
     sign_b1 = "+" if t1 > t_crit else " -"
@@ -149,30 +314,27 @@ def compute(experiments: List[Experiment], g_crit: float, t_crit: float, f_crit:
     f_result_code = "not_rejected" if f_value < f_crit else "rejected"
     f_result = "Hypothesis not rejected" if f_result_code == "not_rejected" else "Hypothesis rejected"
 
-    def format_term(coeff: float, name: str) -> str:
-        sign = "+" if coeff >= 0 else "-"
-        return f"{sign}{abs(coeff):.2f}*{name}"
-
-    eq = f"Y={b0:.2f}{format_term(b1, 'delta1')}{format_term(b2, 'delta2')}"
-
     return {
-        "equation": eq,
-        "coefficients": {"b0": b0, "b1": b1, "b2": b2},
-        "z_averages": {"z1_avg": z1_avg, "z2_avg": z2_avg},
-        "pz": {"pz1": pz1, "pz2": pz2},
-        "delta_calc": {"delta1": delta1_calc, "delta2": delta2_calc},
-        "g_tests": g_tests,
+        "coefficients": {"b0": _round3(b0), "b1": _round3(b1), "b2": _round3(b2)},
+        "coefficients_v": {"b0": _round3(b0_v), "b1": _round3(b1_v), "b2": _round3(b2_v)},
+        "z_averages": {"z1_avg": _round3(z1_avg), "z2_avg": _round3(z2_avg)},
+        "pz": {"pz1": _round3(pz1), "pz2": _round3(pz2)},
+        "delta_calc": {"delta1": _round3(delta1_calc), "delta2": _round3(delta2_calc)},
+        "g_tests": [{"row": g["row"], "g": _round3(g["g"]), "ok": g["ok"]} for g in g_tests],
         "t_tests": {
-            "t0": t0,
-            "t1": t1,
-            "t2": t2,
+            "t0": _round3(t0),
+            "t1": _round3(t1),
+            "t2": _round3(t2),
             "sign_b0": sign_b0,
             "sign_b1": sign_b1,
             "sign_b2": sign_b2,
         },
         "output_rows": output_rows,
-        "f_avg": f_avg,
-        "f_value": f_value,
+        "f_avg": _round3(f_avg),
+        "f_value": _round3(f_value),
         "f_result_code": f_result_code,
         "f_result": f_result,
+        "g_crit": _round3(g_crit),
+        "t_crit": _round3(t_crit),
+        "f_crit": _round3(f_crit),
     }
