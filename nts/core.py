@@ -63,8 +63,10 @@ def _round3(value: float) -> float:
     return float(Decimal(str(value)).quantize(Decimal("0.000"), rounding=ROUND_HALF_UP))
 
 
+# Ожидаемые столбцы таблицы экспериментов.
 EXPECTED_COLUMNS = ["idx", "delta1", "delta2", "x1", "x2", "x3", "y1", "y2", "y3"]
 
+# Допустимые имена колонок (Excel) с небольшими вариациями.
 _HEADER_ALIASES = {
     "idx": ["idx", "no", "n", "num", "number"],
     "delta1": ["delta1", "d1", "delta-1", "delta_1", "delta 1"],
@@ -77,6 +79,7 @@ _HEADER_ALIASES = {
     "y3": ["y3"],
 }
 
+# Допустимые имена для критериев.
 _CRIT_ALIASES = {
     "g_crit": ["g_crit", "gcrit", "g-crit", "g crit"],
     "t_crit": ["t_crit", "tcrit", "t-crit", "t crit"],
@@ -104,6 +107,7 @@ _CRIT_MAP = {
 }
 
 
+# Разбор входных данных (общий формат, одинаковый для JSON и Excel).
 def _parse_input_data(data: Dict[str, Any]) -> Tuple[List[Experiment], float, float, float]:
     if "experiments" not in data:
         raise ValueError("Input must include 'experiments'.")
@@ -131,16 +135,19 @@ def _parse_input_data(data: Dict[str, Any]) -> Tuple[List[Experiment], float, fl
     return experiments, g_crit, t_crit, f_crit
 
 
+# Чтение JSON-файла с входными данными.
 def read_input_json(path: Path) -> Tuple[List[Experiment], float, float, float]:
     data = json.loads(path.read_text(encoding="utf-8"))
     return _parse_input_data(data)
 
 
+# Итератор по строкам Excel без зависимостей от структуры листа.
 def _iter_rows(ws: "openpyxl.worksheet.worksheet.Worksheet") -> Iterable[List[object]]:  # type: ignore[name-defined]
     for row in ws.iter_rows(values_only=True):
         yield list(row)
 
 
+# Чтение листа с экспериментами: первая строка — заголовки.
 def _read_experiments_sheet(ws: "openpyxl.worksheet.worksheet.Worksheet") -> List[Dict[str, object]]:  # type: ignore[name-defined]
     rows = list(_iter_rows(ws))
     if not rows:
@@ -169,6 +176,7 @@ def _read_experiments_sheet(ws: "openpyxl.worksheet.worksheet.Worksheet") -> Lis
     return experiments
 
 
+# Чтение критериев (G/T/F) из отдельного листа или из пары "ключ-значение".
 def _read_criteria_from_sheet(
     ws: "openpyxl.worksheet.worksheet.Worksheet",
 ) -> Dict[str, object]:  # type: ignore[name-defined]
@@ -202,6 +210,7 @@ def _read_criteria_from_sheet(
     return data
 
 
+# Чтение Excel-файла и приведение к общему формату входных данных.
 def read_input_xlsx(path: Path) -> Tuple[List[Experiment], float, float, float]:
     if openpyxl is None:
         raise RuntimeError("openpyxl is required for Excel import. Install it with: python -m pip install openpyxl")
@@ -234,6 +243,7 @@ def read_input_xlsx(path: Path) -> Tuple[List[Experiment], float, float, float]:
     return _parse_input_data(data)
 
 
+# Унифицированный вход: JSON или Excel.
 def read_input_file(path: Path) -> Tuple[List[Experiment], float, float, float]:
     ext = path.suffix.lower()
     if ext == ".json":
@@ -243,26 +253,32 @@ def read_input_file(path: Path) -> Tuple[List[Experiment], float, float, float]:
     raise ValueError(f"Unsupported input format: {path.suffix}")
 
 
+# Основной расчет: формулы и критерии по исходным данным.
 def compute(experiments: List[Experiment], g_crit: float, t_crit: float, f_crit: float) -> Dict[str, Any]:
     if len(experiments) != 4:
         raise ValueError("Expected exactly 4 experiments.")
 
+    # Нормированные факторы и средние отклики.
     z1 = [e.z1 for e in experiments]
     z2 = [e.z2 for e in experiments]
     y_avg = [e.y_avg for e in experiments]
 
-    b0 = sum(y_avg) / 4
-    b1 = (-y_avg[0] - y_avg[1] + y_avg[2] + y_avg[3]) / 4
-    b2 = (-y_avg[0] + y_avg[1] - y_avg[2] + y_avg[3]) / 4
+    # Коэффициенты в кодированных переменных (δ1, δ2).
+    b0_coded = sum(y_avg) / 4
+    b1_coded = (-y_avg[0] - y_avg[1] + y_avg[2] + y_avg[3]) / 4
+    b2_coded = (-y_avg[0] + y_avg[1] - y_avg[2] + y_avg[3]) / 4
 
+    # Средние и масштабы для перехода в "натуральные" коэффициенты.
     z1_avg = sum(z1) / 4
     z2_avg = sum(z2) / 4
     pz1 = z1_avg - min(z1)
     pz2 = max(z2) - z2_avg
 
+    # Оценка дельт на основе нормированных факторов.
     delta1_calc = safe_div(z1[0] - z1_avg, pz1, "delta1_calc")
     delta2_calc = safe_div(z2[0] - z2_avg, pz2, "delta2_calc")
 
+    # Критерий Граббса: проверка выбросов по повторностям.
     squares: List[float] = []
     g_tests: List[Dict[str, Any]] = []
     for i, exp in enumerate(experiments):
@@ -273,30 +289,33 @@ def compute(experiments: List[Experiment], g_crit: float, t_crit: float, f_crit:
         g_tests.append({"row": exp.idx, "g": g_val, "ok": g_ok})
         squares.extend(deviations)
 
+    # Оценка дисперсий для t-критерия.
     s2_vos = sum(squares) / 8
     s_v = math.sqrt(s2_vos / 12)
 
-    b0_v = (b0 - b1 * z1_avg / pz1 - b2 * z2_avg / pz2)
-    b1_v = b1 / pz1
-    b2_v = b2 / pz2
+    # Коэффициенты в "натуральных" переменных (v) и их t-статистики.
+    b0_natural = (b0_coded - b1_coded * z1_avg / pz1 - b2_coded * z2_avg / pz2)
+    b1_natural = b1_coded / pz1
+    b2_natural = b2_coded / pz2
 
-    t0 = abs(b0_v) / s_v
-    t1 = abs(b1_v) / s_v
-    t2 = abs(b2_v) / s_v
+    t0 = abs(b0_natural) / s_v
+    t1 = abs(b1_natural) / s_v
+    t2 = abs(b2_natural) / s_v
 
     sign_b0 = "+" if t0 > t_crit else " -"
     sign_b1 = "+" if t1 > t_crit else " -"
     sign_b2 = "+" if t2 > t_crit else " -"
 
+    # Формирование предсказаний с учетом значимых коэффициентов.
     output_rows: List[Dict[str, float]] = []
     for exp, y in zip(experiments, y_avg):
         y_pred = 0.0
         if sign_b0 == "+":
-            y_pred += b0
+            y_pred += b0_coded
         if sign_b1 == "+":
-            y_pred += b1 * exp.delta1
+            y_pred += b1_coded * exp.delta1
         if sign_b2 == "+":
-            y_pred += b2 * exp.delta2
+            y_pred += b2_coded * exp.delta2
         y_res = y - y_pred
         output_rows.append(
             {
@@ -309,14 +328,15 @@ def compute(experiments: List[Experiment], g_crit: float, t_crit: float, f_crit:
             }
         )
 
+    # Критерий Фишера.
     f_avg = sum(r["y_avg_minus_y_sq"] for r in output_rows) / 4
     f_value = safe_div(s2_vos, f_avg, "F") if f_avg != 0 else float("inf")
     f_result_code = "not_rejected" if f_value < f_crit else "rejected"
     f_result = "Hypothesis not rejected" if f_result_code == "not_rejected" else "Hypothesis rejected"
 
     return {
-        "coefficients": {"b0": _round3(b0), "b1": _round3(b1), "b2": _round3(b2)},
-        "coefficients_v": {"b0": _round3(b0_v), "b1": _round3(b1_v), "b2": _round3(b2_v)},
+        "coefficients": {"b0": _round3(b0_coded), "b1": _round3(b1_coded), "b2": _round3(b2_coded)},
+        "coefficients_v": {"b0": _round3(b0_natural), "b1": _round3(b1_natural), "b2": _round3(b2_natural)},
         "z_averages": {"z1_avg": _round3(z1_avg), "z2_avg": _round3(z2_avg)},
         "pz": {"pz1": _round3(pz1), "pz2": _round3(pz2)},
         "delta_calc": {"delta1": _round3(delta1_calc), "delta2": _round3(delta2_calc)},

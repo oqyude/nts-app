@@ -23,6 +23,7 @@ except Exception:
     TkinterDnD = None
 
 
+# Конфигурация таблицы ввода.
 INPUT_COLUMNS = [
     ("idx", "no"),
     ("delta1", "delta1"),
@@ -45,6 +46,7 @@ OUTPUT_COLUMNS = [
 ]
 
 
+# Тексты интерфейса (RU/EN).
 I18N = {
     "EN": {
         "title_main": "NTS Calculator",
@@ -157,6 +159,7 @@ I18N = {
 }
 
 
+# Нормализация чисел для ввода с запятой.
 def normalize_number(value: str) -> str:
     return value.strip().replace(",", ".")
 
@@ -165,6 +168,7 @@ def fmt3(value: float) -> str:
     return f"{value:.3f}".rstrip("0").rstrip(".")
 
 
+# Главное окно приложения.
 class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
     def __init__(self) -> None:
         super().__init__()
@@ -204,6 +208,7 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
     def t_header(self, key: str) -> str:
         return I18N[self.lang.get()]["headers"][key]
 
+    # Сборка интерфейса.
     def _build_ui(self) -> None:
         top = ttk.Frame(self, padding=10)
         top.pack(fill=tk.X)
@@ -434,6 +439,7 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
         self.t_crit_var.set("")
         self.f_crit_var.set("")
 
+    # Загрузка входного файла и заполнение таблицы.
     def _load_from_path(self, path: Path) -> None:
         try:
             experiments, g_crit, t_crit, f_crit = read_input_file(path)
@@ -510,6 +516,7 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
             raise ValueError(self.t("crit_required"))
         return float(g_raw), float(t_raw), float(f_raw)
 
+    # Чтение данных из формы и расчет.
     def _calculate(self) -> None:
         try:
             experiments = self._read_experiments()
@@ -522,6 +529,7 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
 
         self._show_output(result)
 
+    # Окно с результатами расчета.
     def _show_output(self, result: Dict[str, object]) -> None:
         win = tk.Toplevel(self)
         win.title(self.t("title_output"))

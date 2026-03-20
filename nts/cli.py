@@ -6,6 +6,7 @@ from typing import Any, Dict
 from .core import compute, read_input_file
 
 
+# Текстовый отчет в консоли.
 def print_report(result: Dict[str, Any]) -> None:
     print(result["equation"])
     print("")
@@ -41,6 +42,7 @@ def print_report(result: Dict[str, Any]) -> None:
     print(result["f_result"])
 
 
+# CLI-обертка: чтение входа и вывод результата.
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compute results without Excel dependencies.")
     parser.add_argument("--input", dest="input_path", required=True, help="Path to JSON or XLSX input file.")
@@ -50,10 +52,13 @@ def main() -> None:
     path = Path(args.input_path)
     if not path.exists():
         raise FileNotFoundError(f"Input file not found: {path}")
+
+    # Чтение входа (JSON или Excel), затем расчет.
     experiments, g_crit, t_crit, f_crit = read_input_file(path)
     result = compute(experiments, g_crit, t_crit, f_crit)
     print_report(result)
 
+    # Опциональная запись JSON-результата.
     if args.json_path:
         json_path = Path(args.json_path)
         json_path.write_text(json.dumps(result, ensure_ascii=True, indent=2), encoding="utf-8")
