@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -7,6 +8,11 @@ from typing import Dict, List, Tuple
 from urllib.parse import unquote
 
 from .core import Experiment, compute, read_input_file
+
+try:
+    import openpyxl
+except Exception:
+    openpyxl = None
 
 try:
     from tkinterdnd2 import DND_FILES, TkinterDnD
@@ -78,6 +84,11 @@ I18N = {
         "lang": "Lang:",
         "result_not_rejected": "Hypothesis not rejected",
         "result_rejected": "Hypothesis rejected",
+        "export_json": "Export JSON",
+        "export_xlsx": "Export XLSX",
+        "export_done": "Saved successfully.",
+        "export_error": "Export error",
+        "export_title": "Export",
         "delta1_sym": "δ1",
         "delta2_sym": "δ2",
         "grubbs_title": "Grubbs criterion",
@@ -127,6 +138,11 @@ I18N = {
         "lang": "Язык:",
         "result_not_rejected": "Гипотеза не отвергается",
         "result_rejected": "Гипотеза отвергается",
+        "export_json": "Экспорт JSON",
+        "export_xlsx": "Экспорт XLSX",
+        "export_done": "Файл сохранен.",
+        "export_error": "Ошибка экспорта",
+        "export_title": "Экспорт",
         "delta1_sym": "δ1",
         "delta2_sym": "δ2",
         "grubbs_title": "Критерий Граббса",
@@ -246,6 +262,109 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
         self.btn_calc = ttk.Button(footer, command=self._calculate)
         self.btn_calc.grid(row=0, column=6, padx=12, pady=4)
 
+    def _build_export_payload(self, result: Dict[str, object]) -> Dict[str, object]:
+        if self.last_input is None:
+            # Fallback: read from current form
+            experiments = self._read_experiments()
+            g_crit, t_crit, f_crit = self._read_crit()
+        else:
+            experiments, g_crit, t_crit, f_crit = self.last_input
+        exp_list = []
+        for exp in experiments:
+            exp_list.append(
+                {
+                    "idx": exp.idx,
+                    "delta1": exp.delta1,
+                    "delta2": exp.delta2,
+                    "x1": exp.x1,
+                    "x2": exp.x2,
+                    "x3": exp.x3,
+                    "y1": exp.y1,
+                    "y2": exp.y2,
+                    "y3": exp.y3,
+                }
+            )
+        return {
+            "input": {
+                "experiments": exp_list,
+                "g_crit": g_crit,
+                "t_crit": t_crit,
+                "f_crit": f_crit,
+            },
+            "result": result,
+        }
+    def _export_json(self, result: Dict[str, object]) -> None:
+        try:
+            payload = self._build_export_payload(result)
+            path = filedialog.asksaveasfilename(
+                title=self.t("export_title"),
+                defaultextension=".json",
+                filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+            )
+            if not path:
+                return
+            Path(path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            messagebox.showinfo(self.t("export_title"), self.t("export_done"))
+        except Exception as exc:
+            messagebox.showerror(self.t("export_error"), str(exc))
+
+    def _export_xlsx(self, result: Dict[str, object]) -> None:
+        if openpyxl is None:
+            messagebox.showerror(self.t("export_error"), "openpyxl not installed")
+            return
+        try:
+            payload = self._build_export_payload(result)
+            path = filedialog.asksaveasfilename(
+                title=self.t("export_title"),
+                defaultextension=".xlsx",
+                filetypes=[("Excel", "*.xlsx"), ("All files", "*.*")],
+            )
+            if not path:
+                return
+
+            wb = openpyxl.Workbook()
+            ws_exp = wb.active
+            ws_exp.title = "experiments"
+            ws_exp.append(["idx", "delta1", "delta2", "x1", "x2", "x3", "y1", "y2", "y3"])
+            for exp in payload["input"]["experiments"]:
+                ws_exp.append([
+                    exp["idx"],
+                    exp["delta1"],
+                    exp["delta2"],
+                    exp["x1"],
+                    exp["x2"],
+                    exp["x3"],
+                    exp["y1"],
+                    exp["y2"],
+                    exp["y3"],
+                ])
+
+            ws_crit = wb.create_sheet("criteria")
+            ws_crit.append(["g_crit", "t_crit", "f_crit"])
+            ws_crit.append([
+                payload["input"]["g_crit"],
+                payload["input"]["t_crit"],
+                payload["input"]["f_crit"],
+            ])
+
+            ws_calc = wb.create_sheet("calculated")
+            coeffs = result["coefficients"]
+            coeffs_v = result["coefficients_v"]
+            t_tests = result["t_tests"]
+            ws_calc.append(["b0", coeffs["b0"], "b1", coeffs["b1"], "b2", coeffs["b2"]])
+            ws_calc.append(["b0_v", coeffs_v["b0"], "b1_v", coeffs_v["b1"], "b2_v", coeffs_v["b2"]])
+            ws_calc.append(["t0", t_tests["t0"], "t1", t_tests["t1"], "t2", t_tests["t2"]])
+            ws_calc.append(["G_crit", result["g_crit"], "t_crit", result["t_crit"], "F_crit", result["f_crit"]])
+            ws_calc.append(["F", result["f_value"], "F_avg", result["f_avg"], "F_result", result["f_result_code"]])
+            ws_calc.append([])
+            ws_calc.append(["Grubbs", "row", "G", "status"])
+            for g in result["g_tests"]:
+                ws_calc.append(["", g["row"], g["g"], g["ok"]])
+
+            wb.save(path)
+            messagebox.showinfo(self.t("export_title"), self.t("export_done"))
+        except Exception as exc:
+            messagebox.showerror(self.t("export_error"), str(exc))
     def _apply_lang(self) -> None:
         self.title(self.t("title_main"))
         self.label_input_file.config(text=self.t("input_file"))
@@ -318,6 +437,7 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
     def _load_from_path(self, path: Path) -> None:
         try:
             experiments, g_crit, t_crit, f_crit = read_input_file(path)
+            self.last_input = (experiments, g_crit, t_crit, f_crit)
         except Exception as exc:
             messagebox.showerror(self.t("load_error"), str(exc))
             return
@@ -394,6 +514,7 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
         try:
             experiments = self._read_experiments()
             g_crit, t_crit, f_crit = self._read_crit()
+            self.last_input = (experiments, g_crit, t_crit, f_crit)
             result = compute(experiments, g_crit, t_crit, f_crit)
         except Exception as exc:
             messagebox.showerror(self.t("calc_error"), str(exc))
@@ -462,6 +583,114 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
             res_text = str(result.get("f_result", ""))
         ttk.Label(fisher, text=res_text).grid(row=1, column=0, sticky="w", pady=2)
 
+        btns = ttk.Frame(win, padding=(10, 0, 10, 10))
+        btns.pack(fill=tk.X)
+        ttk.Button(btns, text=self.t("export_json"), command=lambda: self._export_json(result)).pack(side=tk.LEFT)
+        ttk.Button(btns, text=self.t("export_xlsx"), command=lambda: self._export_xlsx(result)).pack(side=tk.LEFT, padx=8)
+
+    def _build_export_payload(self, result: Dict[str, object]) -> Dict[str, object]:
+        if self.last_input is None:
+            raise ValueError("No input data to export.")
+        experiments, g_crit, t_crit, f_crit = self.last_input
+        exp_list = []
+        for exp in experiments:
+            exp_list.append(
+                {
+                    "idx": exp.idx,
+                    "delta1": exp.delta1,
+                    "delta2": exp.delta2,
+                    "x1": exp.x1,
+                    "x2": exp.x2,
+                    "x3": exp.x3,
+                    "y1": exp.y1,
+                    "y2": exp.y2,
+                    "y3": exp.y3,
+                }
+            )
+        return {
+            "input": {
+                "experiments": exp_list,
+                "g_crit": g_crit,
+                "t_crit": t_crit,
+                "f_crit": f_crit,
+            },
+            "result": result,
+        }
+
+    def _export_json(self, result: Dict[str, object]) -> None:
+        try:
+            payload = self._build_export_payload(result)
+            path = filedialog.asksaveasfilename(
+                title=self.t("export_title"),
+                defaultextension=".json",
+                filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+            )
+            if not path:
+                return
+            Path(path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            messagebox.showinfo(self.t("export_title"), self.t("export_done"))
+        except Exception as exc:
+            messagebox.showerror(self.t("export_error"), str(exc))
+
+    def _export_xlsx(self, result: Dict[str, object]) -> None:
+        if openpyxl is None:
+            messagebox.showerror(self.t("export_error"), "openpyxl not installed")
+            return
+        try:
+            payload = self._build_export_payload(result)
+            path = filedialog.asksaveasfilename(
+                title=self.t("export_title"),
+                defaultextension=".xlsx",
+                filetypes=[("Excel", "*.xlsx"), ("All files", "*.*")],
+            )
+            if not path:
+                return
+
+            wb = openpyxl.Workbook()
+            ws_input = wb.active
+            ws_input.title = "input"
+            ws_input.append(["idx", "delta1", "delta2", "x1", "x2", "x3", "y1", "y2", "y3"])
+            for exp in payload["input"]["experiments"]:
+                ws_input.append([
+                    exp["idx"],
+                    exp["delta1"],
+                    exp["delta2"],
+                    exp["x1"],
+                    exp["x2"],
+                    exp["x3"],
+                    exp["y1"],
+                    exp["y2"],
+                    exp["y3"],
+                ])
+
+            ws_crit = wb.create_sheet("criteria")
+            ws_crit.append(["g_crit", "t_crit", "f_crit"])
+            ws_crit.append([
+                payload["input"]["g_crit"],
+                payload["input"]["t_crit"],
+                payload["input"]["f_crit"],
+            ])
+
+            ws_res = wb.create_sheet("result")
+            coeffs = result["coefficients"]
+            coeffs_v = result["coefficients_v"]
+            t_tests = result["t_tests"]
+            ws_res.append(["b0", coeffs["b0"], "b1", coeffs["b1"], "b2", coeffs["b2"]])
+            ws_res.append(["b0_v", coeffs_v["b0"], "b1_v", coeffs_v["b1"], "b2_v", coeffs_v["b2"]])
+            ws_res.append(["t0", t_tests["t0"], "t1", t_tests["t1"], "t2", t_tests["t2"]])
+            ws_res.append(["F", result["f_value"], "F_crit", result["f_crit"]])
+            ws_res.append(["G_crit", result["g_crit"], "t_crit", result["t_crit"]])
+
+            ws_g = wb.create_sheet("grubbs")
+            ws_g.append(["row", "G", "status"])
+            for g in result["g_tests"]:
+                ws_g.append([g["row"], g["g"], g["ok"]])
+
+            wb.save(path)
+            messagebox.showinfo(self.t("export_title"), self.t("export_done"))
+        except Exception as exc:
+            messagebox.showerror(self.t("export_error"), str(exc))
+
     def _apply_lang(self) -> None:
         self.title(self.t("title_main"))
         self.label_input_file.config(text=self.t("input_file"))
@@ -496,4 +725,16 @@ if __name__ == "__main__":
 def main() -> None:
     app = App()
     app.mainloop()
+
+
+
+
+
+
+
+
+
+
+
+
 
