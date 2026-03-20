@@ -29,6 +29,15 @@ INPUT_COLUMNS = [
     ("y3", "y3"),
 ]
 
+OUTPUT_COLUMNS = [
+    ("y_avg", "y_avg", 110),
+    ("delta1", "delta1", 80),
+    ("delta2", "delta2", 80),
+    ("y_pred", "y_pred", 120),
+    ("y_avg_minus_y", "y_avg_minus_y", 140),
+    ("sq", "y_avg_minus_y_sq", 150),
+]
+
 
 I18N = {
     "EN": {
@@ -46,7 +55,7 @@ I18N = {
         "dnd_hint": "(Install tkinterdnd2 for drag & drop)",
         "load_error": "Load error",
         "calc_error": "Calculation error",
-        "drop_json": "Please drop a .json or .xlsx file.",
+        "drop_file": "Please drop a .json or .xlsx file.",
         "empty_value": "Empty value in row {row}, {key}.",
         "crit_required": "G_crit, t_crit and F_crit must be filled.",
         "headers": {
@@ -72,9 +81,9 @@ I18N = {
         "delta1_sym": "δ1",
         "delta2_sym": "δ2",
         "grubbs_title": "Grubbs criterion",
-        "grubbs_row": "Experiment {row}: G={g:.4f} {cmp} G_crit={gcrit:.4f} ({status})",
+        "grubbs_row": "Experiment {row}: G={g} {cmp} G_crit={gcrit} ({status})",
         "fisher_title": "Fisher criterion",
-        "fisher_cmp": "F={f:.4f} {cmp} F_crit={fcrit:.4f}",
+        "fisher_cmp": "F={f} {cmp} F_crit={fcrit}",
         "cmp_le": "<=",
         "cmp_gt": ">",
         "status_ok": "OK",
@@ -95,7 +104,7 @@ I18N = {
         "dnd_hint": "(Установите tkinterdnd2 для drag & drop)",
         "load_error": "Ошибка загрузки",
         "calc_error": "Ошибка расчета",
-        "drop_json": "Перетащите файл .json или .xlsx.",
+        "drop_file": "Перетащите файл .json или .xlsx.",
         "empty_value": "Пустое значение в строке {row}, {key}.",
         "crit_required": "Заполните G_крит, t_крит и F_крит.",
         "headers": {
@@ -121,9 +130,9 @@ I18N = {
         "delta1_sym": "δ1",
         "delta2_sym": "δ2",
         "grubbs_title": "Критерий Граббса",
-        "grubbs_row": "Опыт {row}: G={g:.4f} {cmp} G_крит={gcrit:.4f} ({status})",
+        "grubbs_row": "Опыт {row}: G={g} {cmp} G_крит={gcrit} ({status})",
         "fisher_title": "Критерий Фишера",
-        "fisher_cmp": "F={f:.4f} {cmp} F_крит={fcrit:.4f}",
+        "fisher_cmp": "F={f} {cmp} F_крит={fcrit}",
         "cmp_le": "<=",
         "cmp_gt": ">",
         "status_ok": "OK",
@@ -134,6 +143,10 @@ I18N = {
 
 def normalize_number(value: str) -> str:
     return value.strip().replace(",", ".")
+
+
+def fmt3(value: float) -> str:
+    return f"{value:.3f}".rstrip("0").rstrip(".")
 
 
 class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
@@ -277,7 +290,7 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
             return
         p = Path(path)
         if p.suffix.lower() not in {".json", ".xlsx", ".xlsm"}:
-            messagebox.showerror(self.t("load_error"), self.t("drop_json"))
+            messagebox.showerror(self.t("load_error"), self.t("drop_file"))
             return
         self.selected_file.set(str(p))
         self._load_from_path(p)
@@ -285,7 +298,7 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
     def _browse_file(self) -> None:
         path = filedialog.askopenfilename(
             title=self.t("input_file"),
-            filetypes=[("JSON or Excel files", "*.json *.xlsx *.xlsm"), ("All files", "*.*")],
+            filetypes=[("Input files", "*.json;*.xlsx;*.xlsm"), ("JSON", "*.json"), ("Excel", "*.xlsx;*.xlsm"), ("All files", "*.*")],
         )
         if not path:
             return
@@ -407,14 +420,14 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
         t = result["t_tests"]
         b_v = result["coefficients_v"]
 
-        ttk.Label(mid, text=self.t("t0") + f" = {t['t0']:.4f} ({t['sign_b0']})").grid(row=0, column=0, sticky="w", padx=6, pady=2)
-        ttk.Label(mid, text=self.t("b0v") + f" = {b_v['b0']:.6g}").grid(row=0, column=1, sticky="w", padx=20, pady=2)
+        ttk.Label(mid, text=self.t("t0") + f" = {fmt3(t['t0'])} ({t['sign_b0']})").grid(row=0, column=0, sticky="w", padx=6, pady=2)
+        ttk.Label(mid, text=self.t("b0v") + f" = {fmt3(b_v['b0'])}").grid(row=0, column=1, sticky="w", padx=20, pady=2)
 
-        ttk.Label(mid, text=self.t("t1") + f" = {t['t1']:.4f} ({t['sign_b1']})").grid(row=1, column=0, sticky="w", padx=6, pady=2)
-        ttk.Label(mid, text=self.t("b1v") + f" = {b_v['b1']:.6g}").grid(row=1, column=1, sticky="w", padx=20, pady=2)
+        ttk.Label(mid, text=self.t("t1") + f" = {fmt3(t['t1'])} ({t['sign_b1']})").grid(row=1, column=0, sticky="w", padx=6, pady=2)
+        ttk.Label(mid, text=self.t("b1v") + f" = {fmt3(b_v['b1'])}").grid(row=1, column=1, sticky="w", padx=20, pady=2)
 
-        ttk.Label(mid, text=self.t("t2") + f" = {t['t2']:.4f} ({t['sign_b2']})").grid(row=2, column=0, sticky="w", padx=6, pady=2)
-        ttk.Label(mid, text=self.t("b2v") + f" = {b_v['b2']:.6g}").grid(row=2, column=1, sticky="w", padx=20, pady=2)
+        ttk.Label(mid, text=self.t("t2") + f" = {fmt3(t['t2'])} ({t['sign_b2']})").grid(row=2, column=0, sticky="w", padx=6, pady=2)
+        ttk.Label(mid, text=self.t("b2v") + f" = {fmt3(b_v['b2'])}").grid(row=2, column=1, sticky="w", padx=20, pady=2)
 
         grubbs = ttk.LabelFrame(win, text=self.t("grubbs_title"), padding=(10, 6, 10, 6))
         grubbs.pack(fill=tk.X, padx=10, pady=(4, 6))
@@ -423,9 +436,9 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
             status = self.t("status_ok") if g["g"] <= result["g_crit"] else self.t("status_bad")
             line = self.t("grubbs_row").format(
                 row=g["row"],
-                g=g["g"],
+                g=fmt3(g["g"]),
                 cmp=cmp_sign,
-                gcrit=result["g_crit"],
+                gcrit=fmt3(result["g_crit"]),
                 status=status,
             )
             ttk.Label(grubbs, text=line).grid(row=i, column=0, sticky="w", pady=1)
@@ -434,9 +447,9 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
         fisher.pack(fill=tk.X, padx=10, pady=(2, 10))
         cmp_sign = self.t("cmp_le") if result["f_value"] <= result["f_crit"] else self.t("cmp_gt")
         fisher_line = self.t("fisher_cmp").format(
-            f=result["f_value"],
+            f=fmt3(result["f_value"]),
             cmp=cmp_sign,
-            fcrit=result["f_crit"],
+            fcrit=fmt3(result["f_crit"]),
         )
         ttk.Label(fisher, text=fisher_line).grid(row=0, column=0, sticky="w", pady=1)
 
@@ -465,18 +478,13 @@ class App((TkinterDnD.Tk if DND_AVAILABLE else tk.Tk)):  # type: ignore[misc]
         for (idx, (_key, header_key)) in enumerate(INPUT_COLUMNS):
             self.header_labels[idx].config(text=self.t_header(header_key))
 
-    def _format_equation(self, b0: float, b1: float, b2: float) -> str:
-        delta1 = self.t("delta1_sym")
-        delta2 = self.t("delta2_sym")
-        return _format_equation(b0, b1, b2, delta1, delta2)
-
 
 def _format_equation(b0: float, b1: float, b2: float, d1: str, d2: str) -> str:
     def term(value: float, name: str) -> str:
         sign = "+" if value >= 0 else "-"
-        return f" {sign} {abs(value):.2f}*{name}"
+        return f" {sign} {fmt3(abs(value))}*{name}"
 
-    return f"Y = {b0:.2f}{term(b1, d1)}{term(b2, d2)}"
+    return f"Y = {fmt3(b0)}{term(b1, d1)}{term(b2, d2)}"
 
 
 if __name__ == "__main__":
