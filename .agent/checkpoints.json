@@ -1,0 +1,26 @@
+{
+  "metaagent_version": "3.0.0",
+  "session_id": "38dd3237-c3d7-4ade-adc7-d81bc68ec967",
+  "target_repo": "S:/Git/nts-app",
+  "goal": "Устранить накопленный техдолг; канонизировать переменные по Методичке §3; исправить отсутствующие/неверные t_0..t_2.",
+  "project_type": "existing",
+  "phases": {
+    "init": "completed",
+    "analyse": "completed",
+    "roadmap": "completed",
+    "design": "skipped",
+    "decomposition": "completed",
+    "execution": "completed",
+    "metastate": "completed",
+    "handoff": "completed"
+  },
+  "tasks": [
+    { "id": "T0", "title": "Audit CLI: KeyError('equation') on examples", "status": "completed", "origin": "agent:analysis" },
+    { "id": "T1", "title": "Fix math model in nts/core.py: t-test on coded, s_v = sqrt(s2_vos/N)", "status": "completed", "origin": "user:direct" },
+    { "id": "T2", "title": "Verify t0, t1, t2 in compute() output and CLI", "status": "completed", "origin": "user:direct" },
+    { "id": "T3", "title": "Refactor gui.py: remove duplicates, extract i18n, add equation key", "status": "completed", "origin": "agent:analysis+user:direct" },
+    { "id": "T4", "title": "Add pytest tests for nts.core.compute", "status": "completed", "origin": "agent:analysis" },
+    { "id": "T5", "title": "Baseline test report + project-state refresh", "status": "completed", "origin": "decomposition" }
+  ],
+  "last_updated": "2026-10-13T02:40:00Z"
+}

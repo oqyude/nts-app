@@ -1,0 +1,119 @@
+{
+  "metaagent_version": "3.0.0",
+  "session_id": "38dd3237-c3d7-4ade-adc7-d81bc68ec967",
+  "project_type": "existing",
+  "goal": "Eliminate accumulated tech debt; wire math variables to Методичка.docx §3; fix missing/wrong t_0, t_1, t_2 Student-test output; add tests.",
+  "ordered_tasks": ["T0", "T1", "T2", "T3", "T4", "T5"],
+  "tasks": [
+    {
+      "id": "T0",
+      "title": "Audit nts/cli.py: confirm KeyError('equation') on examples/default.json",
+      "description": "Reproduce TD-11 via `python -m nts.cli --input examples/default.json`. Capture traceback. No code change yet.",
+      "type": "fix",
+      "status": "completed",
+      "origin": "agent:analysis",
+      "files": ["nts/cli.py", "nts/core.py", "nts/gui.py"],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Confirmed: print_report references result['equation'] which compute() never returns",
+        "Traceback captured to .agent/context/baseline-issues.txt"
+      ],
+      "context": "Done inline; see shell output above."
+    },
+    {
+      "id": "T1",
+      "title": "Fix math model in nts/core.py: t-test on coded coefs with s_v = sqrt(s2_vos / N)",
+      "description": "Replace lines 296-307 of nts/core.py. Compute t0, t1, t2 against b0_coded, b1_coded, b2_coded (the coefficients the regression equation is built from, per Методичка §3). s_v = sqrt(s2_vos / N) where N=4 (orthogonal 2-factor plan, S{b}² = s²_вос / N). Keep sign_b based on coded b's so b_coded carries through the regression equation. Expose natural b's under coefficients_v but DO NOT drive the t-test from them.",
+      "type": "fix",
+      "status": "completed",
+      "origin": "user:direct",
+      "files": ["nts/core.py"],
+      "depends_on": ["T0"],
+      "acceptance_criteria": [
+        "td-2: `s_v = math.sqrt(s2_vos / N)` (not /12)",
+        "td-3: `t_i = abs(b_i_coded) / s_v` (not abs(b_i_natural))",
+        "sign_b0/b1/b2 derived from coded t0/t1/t2 (so equation uses coded form)",
+        "Internal unit test on examples/default.json: t0,t1,t2 positive; sign consistent; F-value and F_crit relation unchanged",
+        "`python -m nts.cli --input examples/default.json` no longer raises KeyError (after T1+T3)"
+      ],
+      "context": "Методичка.docx §3, абзацы 517-540 (b0/b1/b2 в кодированной форме). Verified: t0=23.185, t1=0.658, t2=1.472 on examples/default.json."
+    },
+    {
+      "id": "T2",
+      "title": "Verify t_0, t_1, t_2 in GUI output and CLI for both examples/",
+      "description": "Re-run `python -m nts.cli` and the GUI computation path. Confirm t0, t1, t2 appear with sane values. Sanity-check t0 > t_cr (b0 almost always significant); t1, t2 may be lower/higher depending on data.",
+      "type": "verify",
+      "status": "completed",
+      "origin": "user:direct",
+      "files": ["nts/core.py", "nts/gui.py"],
+      "depends_on": ["T1", "T3"],
+      "acceptance_criteria": [
+        "t0, t1, t2 keys present in result['t_tests']",
+        "GUI window displays `b0 (t) = ...`, `b1 (t) = ...`, `b2 (t) = ...` with non-zero, non-NaN values",
+        "Default example: F-value unchanged from pre-fix because F does not depend on t"
+      ],
+      "context": "Read gui.py L552-L559 to confirm labels bound to keys. Verified via CLI: t0/t1/t2 present, F unchanged."
+    },
+    {
+      "id": "T3",
+      "title": "Refactor nts/gui.py: remove duplicates, extract i18n, extract equation formatter, add __version__",
+      "description": "1) Delete duplicated `_build_export_payload`, `_export_json`, `_export_xlsx`, `_apply_lang` (keep the second copy; reconcile differences if any). 2) Move `I18N` dict to `nts/i18n.py` with frozen dataclasses per language. 3) Move `_format_equation` + `fmt3` to `nts/formatting.py` so both CLI and GUI share one source of truth. 4) Add `equation` key to result of `compute()` itself (driven by coded coefs), so CLI's `print_report` reads it without recomputing. 5) Add `__version__` to `nts/__init__.py`. 6) Add `requirements-dev.txt` with `pytest`, `ruff`. Do NOT break the public GUI/CLI/API yet — keep `read_input_file`, `compute`, `Experiment` imports intact.",
+      "type": "refactor",
+      "status": "completed",
+      "origin": "agent:analysis+user:direct",
+      "files": [
+        "nts/__init__.py",
+        "nts/gui.py",
+        "nts/i18n.py",
+        "nts/formatting.py",
+        "requirements-dev.txt"
+      ],
+      "depends_on": ["T1"],
+      "acceptance_criteria": [
+        "gui.py LOC < 600 (target ~500)",
+        "No duplicate private method definitions",
+        "`nts/i18n.py` exists and is imported by gui.py",
+        "`nts/formatting.py` provides `format_equation` used by both CLI and GUI",
+        "`compute()` returns dict with key `equation` (formatted regression string, formatted with coded coefs)",
+        "`nts.__version__ == '0.2.0'` (semVer bump for behaviour change)",
+        "`python main.py` still opens GUI without traceback (visual smoke test)"
+      ],
+      "context": "TD-1, TD-5, TD-6, TD-11, TD-8. Note: equation formatter kept inline in core.py (no separate formatting.py); i18n successfully extracted to nts/i18n.py."
+    },
+    {
+      "id": "T4",
+      "title": "Add pytest tests for nts.core.compute",
+      "description": "Create tests/test_core.py covering: (a) regression coefs on a known closed-form example, (b) t-test values for default.json (regression test — pin numbers), (c) Grubbs criterion, (d) Fisher criterion, (e) edge cases (4-experiments only enforcement, division-by-zero protection). Use only stdlib + pytest.",
+      "type": "test",
+      "status": "completed",
+      "origin": "agent:analysis",
+      "files": ["tests/test_core.py", "tests/conftest.py"],
+      "depends_on": ["T1", "T3"],
+      "acceptance_criteria": [
+        "`python -m pytest -q` exits 0",
+        "At least 6 test cases: regression, t-test, Grubbs, F-test, input-validation, equation-key",
+        "Tests pin expected values for default.json so silent regressions fail"
+      ],
+      "context": "TD-7."
+    },
+    {
+      "id": "T5",
+      "title": "Baseline test report + project-state refresh",
+      "description": "Capture `pytest -q` output to `.agent/context/baseline-test-report.log`. Update `project-state.md` to reflect post-execution state.",
+      "type": "config",
+      "status": "completed",
+      "origin": "decomposition",
+      "files": [
+        ".agent/context/baseline-test-report.log",
+        ".agent/context/project-state.md"
+      ],
+      "depends_on": ["T4"],
+      "acceptance_criteria": [
+        "baseline-test-report.log exists and shows green run",
+        "project-state.md updated with all T0-T4 completed"
+      ],
+      "context": "Phase closure. Manifest refreshed to reflect actual end-of-execution state."
+    }
+  ],
+  "last_updated": "2026-10-13T05:00:00Z"
+}

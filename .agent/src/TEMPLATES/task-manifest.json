@@ -1,0 +1,24 @@
+{
+  "$schema": ".agent/src/TEMPLATES/schemas/task-manifest-schema.json",
+  "version": "3.0",
+  "session_id": "{{ session_id }}",
+  "goal": "{{ goal }}",
+  "created_at": "{{ timestamp }}",
+  "tasks": [
+    {
+      "id": "T1",
+      "title": "{{ task_title }}",
+      "description": "{{ task_description }}",
+      "type": "feature|refactor|test|fix|config|design|docs|invariant",
+      "origin": "user:direct",
+      "files": ["path/to/file1.py", "path/to/file2.py"],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Критерий 1: ...",
+        "Критерий 2: ..."
+      ],
+      "context": "Дополнительная информация",
+      "status": "pending"
+    }
+  ]
+}
