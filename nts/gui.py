@@ -90,9 +90,9 @@ INPUT_COLUMNS: List[tuple[str, str]] = [
 ]
 
 T_BLOCK: tuple[tuple[str, str, str], ...] = (
-    ("t0", "t0", "b0"),
-    ("t1", "t1", "b1"),
-    ("t2", "t2", "b2"),
+    ("t_0", "t0", "b0"),
+    ("t_1", "t1", "b1"),
+    ("t_2", "t2", "b2"),
 )
 
 
@@ -476,7 +476,7 @@ class App(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[misc]
             t_tests = result["t_tests"]
             ws_res.append(["b0", coeffs["b0"], "b1", coeffs["b1"], "b2", coeffs["b2"]])
             ws_res.append(["b0_v", coeffs_v["b0"], "b1_v", coeffs_v["b1"], "b2_v", coeffs_v["b2"]])
-            ws_res.append(["t0", t_tests["t0"], "t1", t_tests["t1"], "t2", t_tests["t2"]])
+            ws_res.append(["t_0", t_tests["t0"], "t_1", t_tests["t1"], "t_2", t_tests["t2"]])
             ws_res.append(["F", result["f_value"], "F_crit", result["f_crit"]])
             ws_res.append(["G_crit", result["g_crit"], "t_crit", result["t_crit"]])
 

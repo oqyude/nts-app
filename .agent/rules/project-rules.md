@@ -4,16 +4,20 @@ Read before every phase. Project-specific rules override protocol defaults.
 
 ## Mandatory rules
 
-1. **Math variable names MUST match Методичка.docx §3 (full factorial plan).**
+1. **Math variable names MUST match Excel reference `.temp/расчет.xlsx` (not Методичка §3).**
    - Inputs: `x1, x2, x3` — component shares (% water, binder, filler), `x1 + x2 + x3 = 100%`.
    - Normalized ratios: `z1 = x1 / x2`, `z2 = x3 / x2`.
    - Coded factors: `δ1, δ2 ∈ {-1, +1}` (no δ0 — 2² design, N=4).
    - Responses: `y1, y2, y3` (3 parallel trials per experiment), averaged to `y_avg = ȳ`.
-   - Regression equation form: `Y = b0 + b1·δ1 + b2·δ2`.
+   - Regression equation display: `Y = b0 + b1·δ1 + b2·δ2` (coded form), but `b_i` shown here = the **coded** coefficient.
    - Reproducibility variance: `s²_вос = Σ(y_ij − ȳ_i)² / N(m−1)`, df = `N(m−1) = 8` for N=4, m=3.
-   - Student criterion: df = `f_зн = N(m−1) = 8`, `t_cr = 2.306` at α=5%.
-   - Fisher criterion: df1 = `N−d = 1`, df2 = `N(m−1) = 8`, `F_cr = 239` (from example) — keep input-driven, not hard-coded.
+   - Standard error of regression coefficient: **`S_в = √(s²_вос / (N·m))`** — divisor uses N·m (Excel convention).
+     Mathematical derivation: each `b_i` is an average over N design points, where each y_avg is itself a mean of m replicates; so Var(b_i) = s²/m / N = s² / (N·m).
+   - Student criterion on **natural (v) coefficients**: `t_i = |b_i_v| / S_в`. `t_cr = 2.306` is input-driven (default.json), not hard-coded.
+   - Fisher criterion (Excel reference): `F = s²_вос / (Σ_resid² / N)`. Compared against input `F_cr = 239`.
    - Grubbs: per-experiment outlier test, df1 = `m−1 = 2`, df2 = `N = 4`.
+
+   > Historical note: prior session fixed math to align with Методичка.docx §3 (`s_v = √(s²/N)`, t on coded b's). User explicitly requested alignment with `.temp/расчет.xlsx` instead — that takes precedence. Full diff in `.agent/context/calculation-diff.md`.
 
 2. **Code must remain import-clean.** Never suppress type errors (`as any`, `@ts-ignore`). For Python: no `from typing import Any` when actual types are knowable; no bare `except:`.
 

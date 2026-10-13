@@ -44,8 +44,14 @@ def test_coded_coefficients_match_hand_calc(all_significant_experiments, default
     assert t["sign_b0"] == t["sign_b1"] == t["sign_b2"] == "+"
 
 
-def test_student_uses_sqrt_s2_over_n_not_over_nm(default_experiments, default_criteria):
-    """Регрессионный тест TD-2: s_v = √(s²_вос/N), не √(s²_вос/(N·m))."""
+def test_student_uses_sqrt_s2_over_n_times_m(default_experiments, default_criteria):
+    """Student S_в per Excel reference: √(s²_вос / (N·m)), not √(s²_вос / N).
+
+    Math derivation: each b_i = Σδ_i·y_avg / N where y_avg has variance s²/m
+    (mean of m replicates), so Var(b_i) = s²/(N·m) → S_в = √(s²/(N·m)).
+    Default.json: s²=8416, N=4, m=3 → S_в = √(8416/12) ≈ 26.4829.
+    See .agent/context/calculation-diff.md for full diff vs Методичка §3.
+    """
     result = compute(_data(default_experiments, *default_criteria))
     for key in ("t0", "t1", "t2"):
         assert key in result["t_tests"]
@@ -53,17 +59,17 @@ def test_student_uses_sqrt_s2_over_n_not_over_nm(default_experiments, default_cr
         assert result["t_tests"][key] >= 0
 
 
-def test_student_uses_coded_not_natural(default_experiments, default_criteria):
-    """Регрессионный тест TD-3: t_i по кодированным b, не по натуральным.
+def test_student_uses_natural_not_coded(default_experiments, default_criteria):
+    """Student t per Excel reference: t_i = |b_i_v| / S_в (натуральные b, не кодированные).
 
-    Для default.json значим только b0; старый код с /12 и натуральными b
-    ошибочно показывал значимость b1, b2.
+    For default.json, all three b_v are large enough that t > 2.306 ⇒ all significant.
+    Diff vs old Методичка-aligned behaviour: b_1 and b_2 cross the t_crit threshold.
     """
     result = compute(_data(default_experiments, *default_criteria))
     t = result["t_tests"]
     assert t["sign_b0"] == "+"
-    assert t["sign_b1"] == "-"
-    assert t["sign_b2"] == "-"
+    assert t["sign_b1"] == "+"
+    assert t["sign_b2"] == "+"
 
 
 def test_grubbs_criterion(default_experiments, default_criteria):
@@ -91,10 +97,14 @@ def test_equation_key_in_result(default_experiments, default_criteria):
 
 
 def test_equation_skips_insignificant_terms(default_experiments, default_criteria):
+    """Default.json: все 3 b значимы → Y = b0 + b1*δ1 + b2*δ2 (b2 отрицателен)."""
     result = compute(_data(default_experiments, *default_criteria))
     assert "0*δ" not in result["equation"]
     assert "+ -" not in result["equation"]
-    assert " - " not in result["equation"]
+    assert result["equation"].startswith("Y = ")
+    assert all(
+        term in result["equation"] for term in ("δ1", "δ2")
+    )
 
 
 def test_format_equation_unit():
@@ -148,3 +158,41 @@ def test_examples_roundtrip(filename, examples_dir):
     assert expected_keys <= result.keys()
     for key in ("t0", "t1", "t2", "sign_b0", "sign_b1", "sign_b2"):
         assert key in result["t_tests"]
+
+
+def test_default_json_matches_excel_reference(default_experiments, default_criteria):
+    """Pin exact values computed by ``.temp/расчет.xlsx`` (Excel reference) for default.json.
+
+    Excel reference (.temp/расчет.xlsx, Лист2):
+    - b0_v=1052.16, b1_v=86.59, b2_v=-174.10
+    - s²_вос=8416 → S_в=26.48
+    - t_0=39.73, t_1=3.27, t_2=6.574 (all significant)
+    - F=17.66 against F_crit=239
+    - residuals: all |y_avg - y_pred| = 21.83 (squared ≈ 476.7)
+
+    See ``.agent/context/calculation-diff.md`` for derivation.
+    """
+    result = compute(_data(default_experiments, *default_criteria))
+
+    # Coded regression coefficients
+    assert result["coefficients"] == {"b0": 1063.5, "b1": 30.167, "b2": -67.5}
+
+    # Natural (v) coefficients
+    assert result["coefficients_v"]["b0"] == pytest.approx(1052.161, abs=1e-3)
+    assert result["coefficients_v"]["b1"] == pytest.approx(86.587, abs=1e-3)
+    assert result["coefficients_v"]["b2"] == pytest.approx(-174.09, abs=1e-2)
+
+    # Student t-values: |b_i_v| / S_в where S_в = √(8416/12) ≈ 26.4829
+    assert result["t_tests"]["t0"] == pytest.approx(39.73, abs=1e-2)
+    assert result["t_tests"]["t1"] == pytest.approx(3.27, abs=1e-2)
+    assert result["t_tests"]["t2"] == pytest.approx(6.574, abs=1e-2)
+
+    # All three significant in Excel reference
+    assert result["t_tests"]["sign_b0"] == result["t_tests"]["sign_b1"] == result["t_tests"]["sign_b2"] == "+"
+
+    # Fisher F = s²_вос / (Σ_resid² / N) = 8416 / 476.69 ≈ 17.66
+    assert result["f_value"] == pytest.approx(17.66, abs=1e-1)
+    assert result["f_result_code"] == "not_rejected"  # F < F_crit
+
+    # Equation (still coded form, all 3 terms now significant)
+    assert "δ1" in result["equation"] and "δ2" in result["equation"]

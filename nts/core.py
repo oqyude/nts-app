@@ -394,12 +394,13 @@ def _grubbs_block(experiments: List[Experiment], y_avg: List[float], g_crit: flo
     return g_tests, squares
 
 
-def _student_block(b_coded: Tuple[float, float, float], s_v: float) -> Tuple[float, float, float]:
-    """Student t по **кодированным** коэффициентам. При s_v = 0 ненулевые b → inf.
+def _student_block(b_natural: Tuple[float, float, float], s_v: float) -> Tuple[float, float, float]:
+    """Student t по **натуральным** (v) коэффициентам. При s_v = 0 ненулевые b → inf.
 
-    См. TD-2/TD-3 в .agent/context/analysis-report.md.
+    Базируется на эталоне Excel (.temp/расчет.xlsx), не на Методичке §3.
+    См. .agent/context/calculation-diff.md.
     """
-    b0, b1, b2 = b_coded
+    b0, b1, b2 = b_natural
     if s_v > 0:
         return abs(b0) / s_v, abs(b1) / s_v, abs(b2) / s_v
     return (
@@ -444,9 +445,10 @@ def _fisher_block(s2_vos: float, output_rows: List[OutputRow], n: int, f_crit: f
 
 
 def compute(input_data: InputData) -> ComputeResult:
-    """Full factorial 2² analysis with parallel trials (Методичка §3).
+    """Full factorial 2² analysis with parallel trials.
 
-    Variable map (Методичка.docx, абз. 376–547):
+    Variable map (per Excel reference ``.temp/расчет.xlsx``; differs from
+    Методичка.docx §3 — see ``.agent/context/calculation-diff.md``):
 
     ============= ==============================================================
     Symbol         Meaning
@@ -458,9 +460,11 @@ def compute(input_data: InputData) -> ComputeResult:
     ``y1,y2,y3``   three parallel trials; ``y_avg = (y1+y2+y3)/3``
     ``N = 4``      plan points (2² design); ``m = 3`` parallel trials
     ``s²_вос``     ``Σ(y_ij − ȳ_i)² / N(m−1)``, df = 8
-    ``t_i``        ``|b_i_coded| / √(s²_вос / N)`` — Student on CODED coeffs
+    ``S_в``        ``√(s²_вос / (N·m))`` — divisor uses N·m (Excel convention)
+    ``t_i``        ``|b_i_v| / S_в`` — Student on NATURAL (v) coeffs
     ``G``          Grubbs per experiment; ``G < G_cr`` ⇒ однородность
-    ``F``          ``s²_вос / f_avg``, df1=N−d=1, df2=N(m−1)=8
+    ``F``          ``s²_вос / (Σ_resid² / N)`` — adequacy check, inverted
+                   ratio, no df adjustment (per Excel reference)
     ============= ==============================================================
     """
     experiments = input_data.experiments
@@ -481,9 +485,9 @@ def compute(input_data: InputData) -> ComputeResult:
 
     g_tests, squares = _grubbs_block(experiments, y_avg, g_crit)
     s2_vos = sum(squares) / (n * (PARALLEL_TRIALS - 1))
-    s_v = math.sqrt(s2_vos / n) if s2_vos > 0 else 0.0
+    s_v = math.sqrt(s2_vos / (n * PARALLEL_TRIALS)) if s2_vos > 0 else 0.0
 
-    t_values = _student_block(b_coded, s_v)
+    t_values = _student_block(b_natural, s_v)
     signs = _significance_marks(t_values, t_crit)
 
     out_rows = _output_rows(experiments, y_avg, b_coded, signs)

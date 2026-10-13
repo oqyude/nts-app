@@ -12,7 +12,7 @@ def print_report(result: ComputeResult) -> None:
     print(result["equation"])
     print("")
     print("t-tests:")
-    for label, key, sign_key in (("b0", "t0", "sign_b0"), ("b1", "t1", "sign_b1"), ("b2", "t2", "sign_b2")):
+    for label, key, sign_key in (("t_0", "t0", "sign_b0"), ("t_1", "t1", "sign_b1"), ("t_2", "t2", "sign_b2")):
         print(f"  {label}: t={t[key]:.4f} sign={t[sign_key]}")
     print("")
     print("G-tests:")

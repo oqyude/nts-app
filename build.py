@@ -120,7 +120,8 @@ def smoke_tests(py: Path) -> None:
 def nuitka_build(py: Path, msvc_version: str, extra_env: dict[str, str], assume_yes: bool) -> None:
     RELEASE_DIR.mkdir(exist_ok=True)
     py_site = Path(str(VENV_DIR)) / "Lib" / "site-packages" / "tkinterdnd2" / "tkdnd"
-    tcl9_dll = py_site / "win-x64-tcl9" / "libtkdnd2.10.3.dll"
+    if not py_site.is_dir():
+        sys.exit(f"tkinterdnd2 tkdnd/ not found at {py_site} — pip install broken?")
     cmd = [
         str(py), "-m", "nuitka",
         "--onefile",
@@ -135,13 +136,25 @@ def nuitka_build(py: Path, msvc_version: str, extra_env: dict[str, str], assume_
         "--output-filename=nts-app.exe",
         "--include-data-dir=examples=examples",
         "--include-module=tkinterdnd2",
+        # Bundle whole tkdnd/ tree for pkgIndex.tcl and tkdnd*.tcl on every
+        # platform/tcl arch — see gui.py::_patched_require.
+        f"--include-data-dir={py_site}=tkinterdnd2/tkdnd",
     ]
-    if tcl9_dll.is_file():
-        cmd.append(
-            f"--include-data-files={tcl9_dll}=tkinterdnd2/tkdnd/win-x64-tcl9/"
-        )
-    else:
-        print(f"[warn] {tcl9_dll} not found; drag-and-drop will fall back to Tcl 8.x only")
+    # Nuitka defers shared libs (.dll/.so/.dylib) inside --include-data-dir
+    # to its dll-files plugin, which only discovers the file that the
+    # tkinterdnd2 Python package advertises in metadata — typically just the
+    # win-x64 (Tcl 8) variant. Force-include every shared lib so the win-x64-tcl9
+    # (and friends) DLL ends up next to its pkgIndex.tcl at runtime. Skip the one
+    # DLL Nuitka already injects via the dll-files plugin (win-x64 on tkinterdnd2
+    # 0.6.4) because Nuitka rejects duplicate data files as a fatal error.
+    _dllfiles_skip = {py_site / "win-x64" / "libtkdnd2.10.3.dll"}
+    for sub in sorted(py_site.iterdir()):
+        if not sub.is_dir():
+            continue
+        for lib in sorted(sub.iterdir()):
+            if lib.suffix in {".dll", ".so", ".dylib"} and lib not in _dllfiles_skip:
+                dest = f"tkinterdnd2/tkdnd/{sub.name}/{lib.name}"
+                cmd.append(f"--include-data-files={lib}={dest}")
     if assume_yes:
         cmd.append("--assume-yes-for-downloads")
     cmd.append(str(REPO_ROOT / "main.py"))
