@@ -31,3 +31,6 @@ release/
 # OS
 Thumbs.db
 .temp/
+
+.omo/
+.opencode/
