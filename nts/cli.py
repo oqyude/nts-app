@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from .core import ComputeResult, InputData, compute, read_input_file
@@ -36,9 +37,43 @@ def print_report(result: ComputeResult) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compute results without Excel dependencies.")
-    parser.add_argument("--input", dest="input_path", required=True, help="Path to JSON or XLSX input file.")
+    parser.add_argument(
+        "path",
+        nargs="?",
+        help="Input file path (positional alternative to --input).",
+    )
+    parser.add_argument(
+        "--input",
+        dest="input_path",
+        default=None,
+        help="Path to JSON or XLSX input file (or self-check file when --self-check).",
+    )
+    parser.add_argument(
+        "--self-check",
+        dest="self_check",
+        action="store_true",
+        help="Run self-check mode: input JSON must be {\"input\": {...}, \"expected\": {...}}.",
+    )
     parser.add_argument("--json", dest="json_path", help="Write result JSON to this path.")
     args = parser.parse_args()
+
+    input_path_str = args.input_path or args.path
+    if input_path_str is None:
+        parser.error("the following arguments are required: --input or a positional path")
+    args.input_path = input_path_str
+
+    if args.self_check:
+        from .checker import parse_self_check_file, print_checklist, verify
+        try:
+            input_data, expected = parse_self_check_file(Path(args.input_path))
+        except (ValueError, FileNotFoundError) as e:
+            print(f"error: {e}", file=sys.stderr)
+            sys.exit(2)
+        actual = compute(input_data)
+        result = verify(actual, expected)
+        print_checklist(result)
+        sys.exit(0 if result.failed == 0 else 1)
+        return
 
     path = Path(args.input_path)
     if not path.exists():
