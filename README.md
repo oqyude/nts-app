@@ -104,14 +104,23 @@ See the sample file: `sample_input.xlsx`.
 
 Build on Windows 10 x64 for best compatibility. The build is architecture-specific.
 
+Two variants are supported:
+
+| Variant | Entry point | Output |
+|---|---|---|
+| `app` (default) | `main.py` | `release/nts-app.exe` |
+| `reverse` | `main_reverse.py` | `release/nts-app-reverse.exe` |
+
+The `reverse` variant is the self-check GUI: load a self-check JSON (with both
+`input` and `expected` blocks) and get a colour-coded ✓/✗ checklist of every
+field produced by `compute()`.
+
 ```bash
-build.ps1
+build.ps1                     # full build, nts-app.exe
+build.ps1 -Variant reverse    # full build, nts-app-reverse.exe
+build.bat /VARIANT reverse    # cmd equivalent
 ```
 
-```bat
-build.bat
-```
-
-The executable will be in `release/nts-app.exe`.
+The executable will be in `release/nts-app.exe` (or `nts-app-reverse.exe`).
 
 Note: If the target machine is missing VC++ runtime, Windows may ask to install it.

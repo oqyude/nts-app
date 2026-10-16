@@ -1,6 +1,10 @@
 """NTS Calculator build orchestrator.
 
 Builds the NTS GUI app as a single Windows executable using Nuitka + MSVC.
+Two variants are supported via ``--variant``:
+
+  * ``app``     — default; computes regression from raw input (entry: main.py).
+  * ``reverse`` — self-check GUI (entry: main_reverse.py).
 
 Why Python (not batch / PowerShell)?
 - CMD has parser quirks with very long REM separator lines + EnableDelayedExpansion
@@ -17,9 +21,10 @@ Requirements on the build host:
 - Dependency Walker (scoop install depends) so Nuitka can resolve imports for --onefile.
 
 Usage:
-    python build.py             # full build (vcvars -> venv -> deps -> tests -> nuitka)
-    python build.py --skip-tests    # skip the pytest sanity pass
-    python build.py --compiler=clang-cl   # override default MSVC with clang-cl
+    python build.py                          # full build (nts-app.exe)
+    python build.py --variant reverse        # full build (nts-app-reverse.exe)
+    python build.py --skip-tests             # skip the pytest sanity pass
+    python build.py --compiler=clang-cl      # override default MSVC with clang-cl
     python build.py --python C:/.../python.exe   # build with a different Python
 """
 from __future__ import annotations
@@ -35,6 +40,19 @@ from typing import Optional
 REPO_ROOT = Path(__file__).resolve().parent
 VENV_DIR = REPO_ROOT / ".venv-build"
 RELEASE_DIR = REPO_ROOT / "release"
+
+VARIANTS: dict[str, dict[str, str]] = {
+    "app": {
+        "entry": str(REPO_ROOT / "main.py"),
+        "output": "nts-app.exe",
+        "product_name": "NTS Calculator",
+    },
+    "reverse": {
+        "entry": str(REPO_ROOT / "main_reverse.py"),
+        "output": "nts-app-reverse.exe",
+        "product_name": "NTS Reverse",
+    },
+}
 
 VCVARS64_CANDIDATES = [
     r"C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat",
@@ -117,8 +135,15 @@ def smoke_tests(py: Path) -> None:
         sys.exit(f"pytest failed with code {result.returncode}")
 
 
-def nuitka_build(py: Path, msvc_version: str, extra_env: dict[str, str], assume_yes: bool) -> None:
+def nuitka_build(
+    py: Path,
+    msvc_version: str,
+    extra_env: dict[str, str],
+    assume_yes: bool,
+    variant: str,
+) -> None:
     RELEASE_DIR.mkdir(exist_ok=True)
+    settings = VARIANTS[variant]
     py_site = Path(str(VENV_DIR)) / "Lib" / "site-packages" / "tkinterdnd2" / "tkdnd"
     if not py_site.is_dir():
         sys.exit(f"tkinterdnd2 tkdnd/ not found at {py_site} — pip install broken?")
@@ -129,11 +154,11 @@ def nuitka_build(py: Path, msvc_version: str, extra_env: dict[str, str], assume_
         f"--msvc={msvc_version}",
         "--enable-plugins=tk-inter",
         "--windows-console-mode=disable",
-        "--product-name=NTS Calculator",
+        f"--product-name={settings['product_name']}",
         "--file-version=0.2.1",
         "--copyright=Built with Nuitka",
         f"--output-dir={RELEASE_DIR}",
-        "--output-filename=nts-app.exe",
+        f"--output-filename={settings['output']}",
         "--include-data-dir=examples=examples",
         "--include-module=tkinterdnd2",
         # Bundle whole tkdnd/ tree for pkgIndex.tcl and tkdnd*.tcl on every
@@ -157,7 +182,7 @@ def nuitka_build(py: Path, msvc_version: str, extra_env: dict[str, str], assume_
                 cmd.append(f"--include-data-files={lib}={dest}")
     if assume_yes:
         cmd.append("--assume-yes-for-downloads")
-    cmd.append(str(REPO_ROOT / "main.py"))
+    cmd.append(settings["entry"])
     print("[nuitka]", " ".join(cmd))
     env = os.environ.copy()
     env.update(extra_env)
@@ -173,6 +198,12 @@ def nuitka_build(py: Path, msvc_version: str, extra_env: dict[str, str], assume_
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--variant",
+        choices=sorted(VARIANTS.keys()),
+        default="app",
+        help="Build target — 'app' (nts-app.exe) or 'reverse' (nts-app-reverse.exe).",
+    )
     parser.add_argument("--skip-tests", action="store_true")
     parser.add_argument("--compiler", choices=["auto", "msvc", "clang-cl"], default="auto")
     parser.add_argument("--msvc-version", default="14.5",
@@ -212,14 +243,14 @@ def main() -> int:
     else:
         print(f"[4/5] pytest (skipped)")
 
-    print(f"[5/5] nuitka onefile (MSVC {args.msvc_version})")
-    nuitka_build(py, args.msvc_version, msvc_env, args.assume_yes)
+    print(f"[5/5] nuitka onefile (MSVC {args.msvc_version}, variant={args.variant})")
+    nuitka_build(py, args.msvc_version, msvc_env, args.assume_yes, args.variant)
 
-    exe = RELEASE_DIR / "nts-app.exe"
+    exe = RELEASE_DIR / VARIANTS[args.variant]["output"]
     if exe.exists():
         print(f"[OK] {exe} ({exe.stat().st_size:,} bytes)")
         return 0
-    print("[X] nts-app.exe not produced")
+    print(f"[X] {VARIANTS[args.variant]['output']} not produced")
     return 1
 
 

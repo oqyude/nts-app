@@ -110,7 +110,7 @@
 ## 8. Прочее
 
 - `.gitignore` — исключён `.temp/` (там лежит `расчет.xlsx`).
-- Удалённых файлов нет — все правки это добавления и модификации.
+- Удаленных файлов нет — все правки это добавления и модификации.
 
 ---
 
@@ -127,3 +127,43 @@
 Математика в финале (`146ba1a`) сознательно приведена к **Excel-референсу** и
 отличается от Методички §3 — откат документирован в
 `.agent/context/calculation-diff.md`.
+
+---
+
+## 9. Reverse-вариант: `nts-app-reverse.exe`
+
+После `b4299b1` добавлена вторая сборка — **reverse (self-check) GUI**.
+Назначение: загрузить self-check JSON (`{ "input": …, "expected": … }`) и
+получить цветной чек-лист ✓/✗ по всем полям `ComputeResult`, который
+строит `nts.checker.verify`.
+
+**Изменения (5 файлов, +413/−5 строк):**
+
+| Файл | Что |
+|---|---|
+| `nts/reverse_gui.py` (новый) | `ReverseApp` на базе `TkinterDnD` — без ввода экспериментов руками; только Browse/Reload/Clear/Run/Export + Treeview с тегами `passed`/`failed` (зелёный/красный) + экспорт отчёта в txt. |
+| `main_reverse.py` (новый) | Entry-point `from nts.reverse_gui import main`. |
+| `nts/i18n.py` | +20 ключей на двух языках (`reverse_title_main`, `reverse_col_*`, `reverse_summary_*`, и т.д.). |
+| `build.py` | Словарь `VARIANTS` + флаг `--variant {app, reverse}`; `nuitka_build` параметризован по `entry`/`output`/`product_name`. |
+| `build.ps1` / `build.bat` | Пробрасывают `-Variant` / `/VARIANT` в `build.py`. |
+
+**Сборка:**
+
+```bash
+build.ps1 -Variant reverse        # → release/nts-app-reverse.exe
+build.bat /VARIANT reverse        # cmd-эквивалент
+python build.py --variant reverse # прямой Python
+```
+
+**Отличия GUI от основного `nts-app`:**
+
+- нет ручного ввода 4 опытов × 9 полей — источник данных только файл;
+- результат рендерится **сразу** после загрузки как табличный чек-лист
+  (Field / Actual / Expected / Diff / Note), цветные ✓/✗;
+- кнопки: `Load self-check JSON`, `Reload`, `Clear`, `Run check`, `Export report`;
+- заголовок окна: `NTS Reverse (self-check)` (RU: `НТС Реверс (самопроверка)`).
+
+Поведенческий smoke-test на `examples/default_with_expected.json` (54 чек-а,
+все passed) пройден: Tk-окно поднимается, Treeview заполняется, summary
+обновляется, переключение языка переводит headings и summary без потери
+данных строк. Тесты pytest (47) — зелёные.
