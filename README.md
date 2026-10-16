@@ -53,6 +53,39 @@ python -m nts
 }
 ```
 
+## Self-check mode
+
+Verify a hand-calculated NTS solution against the canonical Python computation.
+
+The input JSON must contain both the experiment data and the expected output values:
+
+```json
+{
+  "input": { ...experiments + g_crit/t_crit/f_crit... },
+  "expected": { ...a ComputeResult-shaped dict... }
+}
+```
+
+Run:
+
+```bash
+python -m nts.cli --self-check path/to/self_check.json
+```
+
+Each computed field is compared with `expected` using per-category tolerances
+(1e-3 for coefficients, 1e-2 for t-values, 1e-1 for F-value). The checklist shows
+`✓` for matching fields and `✗` for mismatches, plus the actual difference.
+Exit code: `0` when all match, `1` when any field mismatches, `2` when the input
+file is missing or malformed.
+
+Capture the `expected` block from a real run:
+
+```bash
+python -m nts.cli --input your_input.json --json expected.json
+```
+
+See `examples/default_with_expected.json` for a working demo.
+
 ## Excel Input Format
 
 The workbook should contain:
