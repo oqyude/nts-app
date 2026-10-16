@@ -53,6 +53,11 @@ EN_BASE: Dict[str, Any] = {
     "cmp_gt": ">",
     "status_ok": "OK",
     "status_bad": "not OK",
+    "self_check_title": "Self-check",
+    "summary_passed": "{passed} passed",
+    "summary_failed": "{failed} failed",
+    "diff_label": "diff",
+    "missing_label": "missing",
 }
 
 EN_HEADERS: Dict[str, str] = {
@@ -97,6 +102,11 @@ RU_OVERRIDES: Dict[str, Any] = {
     "fisher_title": "Критерий Фишера",
     "fisher_cmp": "F={f} {cmp} F_крит={fcrit}",
     "status_bad": "не OK",
+    "self_check_title": "Самопроверка",
+    "summary_passed": "{passed} пройдено",
+    "summary_failed": "{failed} провалено",
+    "diff_label": "расхождение",
+    "missing_label": "отсутствует",
 }
 
 RU_HEADERS_OVERRIDES: Dict[str, str] = {
