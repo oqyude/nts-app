@@ -1,0 +1,30 @@
+{
+  "id": "T3",
+  "title": "Refactor nts/gui.py: remove duplicates, extract i18n, extract equation formatter, add __version__",
+  "description": "1) Delete duplicated `_build_export_payload`, `_export_json`, `_export_xlsx`, `_apply_lang` (keep the second copy; reconcile differences if any). 2) Move `I18N` dict to `nts/i18n.py` with frozen dataclasses per language. 3) Move `_format_equation` + `fmt3` to `nts/formatting.py` so both CLI and GUI share one source of truth. 4) Add `equation` key to result of `compute()` itself (driven by coded coefs), so CLI's `print_report` reads it without recomputing. 5) Add `__version__` to `nts/__init__.py`. 6) Add `requirements-dev.txt` with `pytest`, `ruff`. Do NOT break the public GUI/CLI/API yet — keep `read_input_file`, `compute`, `Experiment` imports intact.",
+  "type": "refactor",
+  "status": "completed",
+  "origin": "agent:analysis+user:direct",
+  "files": [
+    "nts/__init__.py",
+    "nts/gui.py",
+    "nts/i18n.py",
+    "nts/formatting.py",
+    "requirements-dev.txt"
+  ],
+  "depends_on": [
+    "T1"
+  ],
+  "acceptance_criteria": [
+    "gui.py LOC < 600 (target ~500)",
+    "No duplicate private method definitions",
+    "`nts/i18n.py` exists and is imported by gui.py",
+    "`nts/formatting.py` provides `format_equation` used by both CLI and GUI",
+    "`compute()` returns dict with key `equation` (formatted regression string, formatted with coded coefs)",
+    "`nts.__version__ == '0.2.0'` (semVer bump for behaviour change)",
+    "`python main.py` still opens GUI without traceback (visual smoke test)"
+  ],
+  "context": "TD-1, TD-5, TD-6, TD-11, TD-8. Note: equation formatter kept inline in core.py (no separate formatting.py); i18n successfully extracted to nts/i18n.py.",
+  "archived_at": "2026-10-21T15:12:11Z",
+  "archive_reason": "completed and verified (METASTATE 6.3)"
+}

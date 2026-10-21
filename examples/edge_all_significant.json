@@ -1,0 +1,149 @@
+{
+  "input": {
+    "experiments": [
+      {
+        "idx": 1,
+        "delta1": -1,
+        "delta2": -1,
+        "x1": 30.0,
+        "x2": 50.0,
+        "x3": 20.0,
+        "y1": 899,
+        "y2": 901,
+        "y3": 900
+      },
+      {
+        "idx": 2,
+        "delta1": -1,
+        "delta2": 1,
+        "x1": 35.0,
+        "x2": 45.0,
+        "x3": 20.0,
+        "y1": 901,
+        "y2": 900,
+        "y3": 899
+      },
+      {
+        "idx": 3,
+        "delta1": 1,
+        "delta2": -1,
+        "x1": 55.0,
+        "x2": 35.0,
+        "x3": 10.0,
+        "y1": 900,
+        "y2": 901,
+        "y3": 899
+      },
+      {
+        "idx": 4,
+        "delta1": 1,
+        "delta2": 1,
+        "x1": 45.0,
+        "x2": 30.0,
+        "x3": 25.0,
+        "y1": 1301,
+        "y2": 1299,
+        "y3": 1300
+      }
+    ],
+    "g_crit": 0.7679,
+    "t_crit": 2.306,
+    "f_crit": 239.0
+  },
+  "expected": {
+    "coefficients": {
+      "b0": 1000.0,
+      "b1": 100.0,
+      "b2": 100.0
+    },
+    "coefficients_v": {
+      "b0": 639.544,
+      "b1": 195.198,
+      "b2": 292.005
+    },
+    "z_averages": {
+      "z1_avg": 1.112,
+      "z2_avg": 0.491
+    },
+    "pz": {
+      "pz1": 0.512,
+      "pz2": 0.342
+    },
+    "delta_calc": {
+      "delta1": -1.0,
+      "delta2": -0.265
+    },
+    "g_tests": [
+      {
+        "row": 1,
+        "g": 0.5,
+        "ok": "OK"
+      },
+      {
+        "row": 2,
+        "g": 0.5,
+        "ok": "OK"
+      },
+      {
+        "row": 3,
+        "g": 0.5,
+        "ok": "OK"
+      },
+      {
+        "row": 4,
+        "g": 0.5,
+        "ok": "OK"
+      }
+    ],
+    "t_tests": {
+      "t0": 2215.446,
+      "t1": 676.184,
+      "t2": 1011.534,
+      "sign_b0": "+",
+      "sign_b1": "+",
+      "sign_b2": "+"
+    },
+    "output_rows": [
+      {
+        "y_avg": 900.0,
+        "delta1": -1,
+        "delta2": -1,
+        "y_pred": 800.0,
+        "y_avg_minus_y": 100.0,
+        "y_avg_minus_y_sq": 10000.0
+      },
+      {
+        "y_avg": 900.0,
+        "delta1": -1,
+        "delta2": 1,
+        "y_pred": 1000.0,
+        "y_avg_minus_y": -100.0,
+        "y_avg_minus_y_sq": 10000.0
+      },
+      {
+        "y_avg": 900.0,
+        "delta1": 1,
+        "delta2": -1,
+        "y_pred": 1000.0,
+        "y_avg_minus_y": -100.0,
+        "y_avg_minus_y_sq": 10000.0
+      },
+      {
+        "y_avg": 1300.0,
+        "delta1": 1,
+        "delta2": 1,
+        "y_pred": 1200.0,
+        "y_avg_minus_y": 100.0,
+        "y_avg_minus_y_sq": 10000.0
+      }
+    ],
+    "f_avg": 10000.0,
+    "f_value": 0.0,
+    "f_result_code": "not_rejected",
+    "f_result": "Hypothesis not rejected",
+    "equation": "Y = 1000 + 100*\u03b41 + 100*\u03b42",
+    "g_crit": 0.768,
+    "t_crit": 2.306,
+    "f_crit": 239.0
+  }
+}

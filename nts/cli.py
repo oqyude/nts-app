@@ -35,7 +35,25 @@ def print_report(result: ComputeResult) -> None:
     print(result["f_result"])
 
 
+def _force_utf8_output() -> None:
+    """Make stdout/stderr UTF-8 so ``δ`` and ``✓``/``✗`` survive a cp1252 console.
+
+    Without this the CLI dies with ``UnicodeEncodeError`` on the default
+    Windows console encoding (cp1252 cannot encode ``δ`` or the checklist
+    glyphs) — the report and the self-check checklist both carry them.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
+
+
 def main() -> None:
+    _force_utf8_output()
     parser = argparse.ArgumentParser(description="Compute results without Excel dependencies.")
     parser.add_argument(
         "path",
@@ -63,14 +81,14 @@ def main() -> None:
     args.input_path = input_path_str
 
     if args.self_check:
-        from .checker import parse_self_check_file, print_checklist, verify
+        from .checker import parse_self_check_bundle, print_checklist, verify
         try:
-            input_data, expected = parse_self_check_file(Path(args.input_path))
+            bundle = parse_self_check_bundle(Path(args.input_path))
         except (ValueError, FileNotFoundError) as e:
             print(f"error: {e}", file=sys.stderr)
             sys.exit(2)
-        actual = compute(input_data)
-        result = verify(actual, expected)
+        actual = compute(bundle.input_data)
+        result = verify(actual, bundle.expected, mode=bundle.mode)
         print_checklist(result)
         sys.exit(0 if result.failed == 0 else 1)
         return

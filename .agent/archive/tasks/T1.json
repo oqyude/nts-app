@@ -1,0 +1,24 @@
+{
+  "id": "T1",
+  "title": "Fix math model in nts/core.py: t-test on coded coefs with s_v = sqrt(s2_vos / N)",
+  "description": "Replace lines 296-307 of nts/core.py. Compute t0, t1, t2 against b0_coded, b1_coded, b2_coded (the coefficients the regression equation is built from, per Методичка §3). s_v = sqrt(s2_vos / N) where N=4 (orthogonal 2-factor plan, S{b}² = s²_вос / N). Keep sign_b based on coded b's so b_coded carries through the regression equation. Expose natural b's under coefficients_v but DO NOT drive the t-test from them.",
+  "type": "fix",
+  "status": "completed",
+  "origin": "user:direct",
+  "files": [
+    "nts/core.py"
+  ],
+  "depends_on": [
+    "T0"
+  ],
+  "acceptance_criteria": [
+    "td-2: `s_v = math.sqrt(s2_vos / N)` (not /12)",
+    "td-3: `t_i = abs(b_i_coded) / s_v` (not abs(b_i_natural))",
+    "sign_b0/b1/b2 derived from coded t0/t1/t2 (so equation uses coded form)",
+    "Internal unit test on examples/default.json: t0,t1,t2 positive; sign consistent; F-value and F_crit relation unchanged",
+    "`python -m nts.cli --input examples/default.json` no longer raises KeyError (after T1+T3)"
+  ],
+  "context": "Методичка.docx §3, абзацы 517-540 (b0/b1/b2 в кодированной форме). Verified: t0=23.185, t1=0.658, t2=1.472 on examples/default.json.",
+  "archived_at": "2026-10-21T15:12:11Z",
+  "archive_reason": "completed and verified (METASTATE 6.3)"
+}

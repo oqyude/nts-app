@@ -1,0 +1,24 @@
+{
+  "id": "T2",
+  "title": "Verify t_0, t_1, t_2 in GUI output and CLI for both examples/",
+  "description": "Re-run `python -m nts.cli` and the GUI computation path. Confirm t0, t1, t2 appear with sane values. Sanity-check t0 > t_cr (b0 almost always significant); t1, t2 may be lower/higher depending on data.",
+  "type": "verify",
+  "status": "completed",
+  "origin": "user:direct",
+  "files": [
+    "nts/core.py",
+    "nts/gui.py"
+  ],
+  "depends_on": [
+    "T1",
+    "T3"
+  ],
+  "acceptance_criteria": [
+    "t0, t1, t2 keys present in result['t_tests']",
+    "GUI window displays `b0 (t) = ...`, `b1 (t) = ...`, `b2 (t) = ...` with non-zero, non-NaN values",
+    "Default example: F-value unchanged from pre-fix because F does not depend on t"
+  ],
+  "context": "Read gui.py L552-L559 to confirm labels bound to keys. Verified via CLI: t0/t1/t2 present, F unchanged.",
+  "archived_at": "2026-10-21T15:12:11Z",
+  "archive_reason": "completed and verified (METASTATE 6.3)"
+}

@@ -1,0 +1,24 @@
+{
+  "id": "T4",
+  "title": "Add pytest tests for nts.core.compute",
+  "description": "Create tests/test_core.py covering: (a) regression coefs on a known closed-form example, (b) t-test values for default.json (regression test — pin numbers), (c) Grubbs criterion, (d) Fisher criterion, (e) edge cases (4-experiments only enforcement, division-by-zero protection). Use only stdlib + pytest.",
+  "type": "test",
+  "status": "completed",
+  "origin": "agent:analysis",
+  "files": [
+    "tests/test_core.py",
+    "tests/conftest.py"
+  ],
+  "depends_on": [
+    "T1",
+    "T3"
+  ],
+  "acceptance_criteria": [
+    "`python -m pytest -q` exits 0",
+    "At least 6 test cases: regression, t-test, Grubbs, F-test, input-validation, equation-key",
+    "Tests pin expected values for default.json so silent regressions fail"
+  ],
+  "context": "TD-7.",
+  "archived_at": "2026-10-21T15:12:11Z",
+  "archive_reason": "completed and verified (METASTATE 6.3)"
+}

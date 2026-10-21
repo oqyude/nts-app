@@ -1,0 +1,57 @@
+{
+  "$schema": ".agent/src/TEMPLATES/schemas/request-schema.json",
+  "template_version": "1.0",
+  "request_id": "req-self-check-core-extended",
+  "task_id": "T6",
+  "title": "Self-check workbook: core/extended split, optional extended, human-readable variable dictionary",
+  "status": "ready_for_review",
+  "created_at": "2026-10-21T12:00:00Z",
+  "goal": "Move every non-yellow-marked key of the self-check workbook 'result' sheet to a new optional 'extended' sheet; keep the check runnable in a simplified mode without that sheet; make the color marking (core set) explicit in code; give every key a human-readable description in Excel and in the GUI.",
+
+  "changes": {
+    "summary": "Core/extended split of the self-check workbook. CORE_RESULT_KEYS = the 10 yellow-marked cells of the reference workbook (f_value, coefficients.b0..b2, coefficients_v.b0..b2, t_tests.t0..t2). Writer emits 'result' (core, yellow fill) + 'extended' (rest); reader merges 'extended' when present and resolves the mode from the file; verify() gained mode=MODE_SIMPLIFIED (core fields only) vs MODE_FULL (every known field required); the reverse GUI verifies in the simplified mode by default, switches to extended automatically when the file carries an 'extended' sheet, and offers a Mode selector (Auto / Simplified / Extended); nts/dictionary.py adds the human description of every variable (RU + EN), written to a new 'description' column of the result/extended sheets, to a 'dictionary' sheet with the full glossary, and shown in a Description column of the reverse checklist; GUI exporter delegates to nts.checker.write_self_check_xlsx (removed ~70 duplicated lines); CLI forces UTF-8 stdout/stderr (the CLI used to die with UnicodeEncodeError on a cp1252 console).",
+    "commits": [],
+    "files_changed": [
+      "nts/checker.py",
+      "nts/cli.py",
+      "nts/gui.py",
+      "nts/reverse_gui.py",
+      "nts/i18n.py",
+      "nts/dictionary.py",
+      "tests/test_checker.py",
+      "README.md",
+      "examples/default_result.xlsx",
+      "examples/default_result_core.xlsx"
+    ]
+  },
+
+  "verification": {
+    "tests_passed": "79 passed (python -m pytest -q); new: 15 tests for the core/extended split, the optional 'extended' sheet, the simplified/full modes, the description column, the dictionary sheet and the reverse-GUI mode resolution",
+    "lsp_clean": true,
+    "manual_checks": [
+      "CLI: examples/default_result.xlsx -> 54 passed / exit 0; examples/default_result_core.xlsx -> 10 passed / exit 0; examples/default_with_expected.json -> 54 passed / exit 0",
+      "reverse GUI smoke: core-only workbook -> 10 rows (simplified), workbook with 'extended' -> 54 rows (auto-extended), forced simplified -> 10 rows, description column localized (RU/EN)",
+      "main GUI smoke: output panel renders the description under every value, in the current language",
+      "GUI export end-to-end: the button writes a 7-sheet workbook with the description column and the dictionary sheet; the exported file passes the self-check (54/54)"
+    ]
+  },
+
+  "fulfills_ac": [
+    "result sheet contains only the yellow-marked (core) keys; the rest move to the 'extended' sheet",
+    "core value cells keep the yellow fill; extended cells stay unstyled",
+    "a workbook without an 'extended' sheet passes the self-check in the simplified mode (10 core checks, exit 0)",
+    "a workbook with an 'extended' sheet is checked in the extended mode (54 checks, exit 0)",
+    "the simplified mode reports the main fields only — the optional G-test / output-row fields are not checked",
+    "the reverse GUI defaults to the simplified mode and switches to extended automatically when an 'extended' sheet is present",
+    "every key keeps its name and gains a human description: a 'description' column in Excel and a Description column in the GUI checklist",
+    "the GUI 'Export to Excel' produces the same layout as nts.checker.write_self_check_xlsx"
+  ],
+
+  "notes": {
+    "dependency_audit": "Dependency graph taken from .temp/расчет.xlsx (Лист2 formulas). The core values are NOT self-contained as data: f_value needs f_avg (extended), coefficients_v.* need z_averages.*/pz.* (extended), t_tests.* additionally need S_в (N14), which is not exported at all. Making 'extended' optional is still safe because compute() rebuilds the whole model from the 'input' sheet and verify() compares field-by-field — the dependency chain lives on the computation side, not on the verification side.",
+    "mode_resolution": "Workbook: 'extended' sheet present -> extended mode, otherwise simplified. JSON payload: the 'expected' block is a complete ComputeResult -> extended mode. The reverse GUI's Mode selector overrides the automatic choice.",
+    "reference_file": "examples/default_result.xlsx is data-identical to the hand-made reference workbook (all 26 result keys, input, criteria, grubbs, output_rows match) — only the sheet split and the descriptions differ. The original file itself was left untouched.",
+    "pre_existing_defect": "In the uncommitted working tree, App._export_xlsx had been dedented out of the class (an earlier session) — the 'Export XLSX' button raised AttributeError. Restored as a method of App while replacing the duplicated writer with the shared nts.checker.write_self_check_xlsx.",
+    "not_committed": "The working tree already contained uncommitted work from earlier sessions; committing was left to the user."
+  }
+}

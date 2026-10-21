@@ -4,11 +4,13 @@ import json
 import os
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, font as tkfont, messagebox, ttk
 from typing import Any, Dict, List
 from urllib.parse import unquote
 
+from .checker import write_self_check_xlsx
 from .core import EXPECTED_EXPERIMENTS, Experiment, InputData, compute, fmt3, read_input_file
+from .dictionary import describe
 from .i18n import DEFAULT_LANGUAGE, I18N, LANGUAGES, normalize_lang
 
 try:
@@ -95,6 +97,12 @@ T_BLOCK: tuple[tuple[str, str, str], ...] = (
     ("t_2", "t2", "b2"),
 )
 
+#: Colour of the muted description lines that annotate the computed values.
+CAPTION_COLOR = "#4b5563"
+
+#: Width (px) at which a description wraps onto the next line.
+CAPTION_WRAP = 400
+
 
 def normalize_number(value: str) -> str:
     return value.strip().replace(",", ".")
@@ -147,6 +155,10 @@ class App(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[misc]
         self.t_crit_var = tk.StringVar()
         self.f_crit_var = tk.StringVar()
 
+        self.style = ttk.Style(self)
+        self.caption_font = self._derive_font(-1)
+        self.headline_font = self._derive_font(1, weight="bold")
+
         self.header_labels: List[ttk.Label] = []
 
         self._build_ui()
@@ -160,6 +172,53 @@ class App(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[misc]
 
     def t_header(self, key: str) -> str:
         return I18N[self.lang.get()]["headers"][key]
+
+    def _derive_font(self, size_delta: int = 0, **options: str) -> tkfont.Font:
+        """Return a new font derived from the UI default font.
+
+        ``tkinter.font.Font.copy()`` hands back the *same* named font, so
+        resizing it would shrink the whole application. A separate font
+        object is created instead — the default font stays untouched.
+        """
+        actual = tkfont.nametofont("TkDefaultFont").actual()
+        family = actual.get("family", "Segoe UI")
+        if isinstance(family, (tuple, list)):
+            family = family[0]
+        size = max(int(actual.get("size", 9)) + size_delta, 6)
+        return tkfont.Font(self, family=family, size=size, **options)
+
+    def _panel_background(self) -> str:
+        """Background colour of the output panel, matched to the ttk theme."""
+        return self.style.lookup("TFrame", "background") or "#f0f0f0"
+
+    def _place_value(
+        self,
+        parent: tk.Misc,
+        row: int,
+        column: int,
+        value: str,
+        description: str,
+        padx: tuple[int, int] = (0, 0),
+    ) -> None:
+        """Place a value with its human-readable description underneath.
+
+        The value keeps the regular UI font, the description is one step
+        smaller and dimmer — the number stays the hero and the explanation
+        reads as a quiet note right under it.
+        """
+        ttk.Label(parent, text=value).grid(
+            row=row, column=column, sticky="w", padx=padx, pady=(3, 0)
+        )
+        tk.Label(
+            parent,
+            text=description,
+            background=self._panel_background(),
+            foreground=CAPTION_COLOR,
+            font=self.caption_font,
+            anchor="w",
+            justify="left",
+            wraplength=CAPTION_WRAP,
+        ).grid(row=row + 1, column=column, sticky="w", padx=padx, pady=(0, 3))
 
     def _build_ui(self) -> None:
         top = ttk.Frame(self, padding=10)
@@ -340,27 +399,36 @@ class App(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[misc]
         self._show_output(result)
 
     def _show_output(self, result: Dict[str, Any]) -> None:
+        lang = self.lang.get()
         win = tk.Toplevel(self)
         win.title(self.t("title_output"))
-        win.geometry("760x520")
+        win.geometry("820x600")
 
         top = ttk.Frame(win, padding=10)
         top.pack(fill=tk.X)
-        ttk.Label(top, text=str(result["equation"])).pack(anchor="w")
+        ttk.Label(top, text=str(result["equation"]), font=self.headline_font).pack(anchor="w")
 
         mid = ttk.Frame(win, padding=(10, 0, 10, 6))
         mid.pack(fill=tk.X)
         t_tests = result["t_tests"]
         coeffs_v = result["coefficients_v"]
         for row, (tk_label_key, key, vk) in enumerate(T_BLOCK):
-            ttk.Label(
+            self._place_value(
                 mid,
-                text=f"{self.t(tk_label_key)} = {fmt3(t_tests[key])} ({t_tests[f'sign_{vk}']})",
-            ).grid(row=row, column=0, sticky="w", padx=6, pady=2)
-            ttk.Label(
+                row * 2,
+                0,
+                f"{self.t(tk_label_key)} = {fmt3(t_tests[key])} ({t_tests[f'sign_{vk}']})",
+                describe(f"t_tests.{key}", lang),
+                padx=(6, 26),
+            )
+            self._place_value(
                 mid,
-                text=f"{self.t(f'{vk}v')} = {fmt3(coeffs_v[vk])}",
-            ).grid(row=row, column=1, sticky="w", padx=20, pady=2)
+                row * 2,
+                1,
+                f"{self.t(f'{vk}v')} = {fmt3(coeffs_v[vk])}",
+                describe(f"coefficients_v.{vk}", lang),
+                padx=(0, 6),
+            )
 
         grubbs = ttk.LabelFrame(win, text=self.t("grubbs_title"), padding=(10, 6, 10, 6))
         grubbs.pack(fill=tk.X, padx=10, pady=(4, 6))
@@ -371,7 +439,7 @@ class App(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[misc]
                 row=g["row"], g=fmt3(g["g"]), cmp=cmp_sign,
                 gcrit=fmt3(result["g_crit"]), status=status,
             )
-            ttk.Label(grubbs, text=line).grid(row=i, column=0, sticky="w", pady=1)
+            self._place_value(grubbs, i * 2, 0, line, describe("G", lang))
 
         fisher = ttk.LabelFrame(win, text=self.t("fisher_title"), padding=(10, 6, 10, 6))
         fisher.pack(fill=tk.X, padx=10, pady=(2, 10))
@@ -379,7 +447,7 @@ class App(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[misc]
         fisher_line = self.t("fisher_cmp").format(
             f=fmt3(result["f_value"]), cmp=cmp_sign, fcrit=fmt3(result["f_crit"]),
         )
-        ttk.Label(fisher, text=fisher_line).grid(row=0, column=0, sticky="w", pady=1)
+        self._place_value(fisher, 0, 0, fisher_line, describe("f_value", lang))
 
         res_code = result.get("f_result_code")
         if res_code == "not_rejected":
@@ -388,7 +456,7 @@ class App(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[misc]
             res_text = self.t("result_rejected")
         else:
             res_text = str(result.get("f_result", ""))
-        ttk.Label(fisher, text=res_text).grid(row=1, column=0, sticky="w", pady=2)
+        self._place_value(fisher, 2, 0, res_text, describe("f_result", lang))
 
         btns = ttk.Frame(win, padding=(10, 0, 10, 10))
         btns.pack(fill=tk.X)
@@ -438,11 +506,27 @@ class App(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[misc]
             messagebox.showerror(self.t("export_error"), str(exc))
 
     def _export_xlsx(self, result: Dict[str, Any]) -> None:
+        """Write a self-check workbook.
+
+        The layout is owned by :func:`nts.checker.write_self_check_xlsx` (single
+        source of truth, shared with the CLI):
+          * ``input``        — experiments table (idx + 8 columns, 4 data rows).
+          * ``criteria``     — header ``g_crit,t_crit,f_crit`` + one value row.
+          * ``result``       — the **core** result keys, vertical
+            ``(key, value, description)``, yellow-marked; dotted paths
+            (``coefficients.b0``, ``t_tests.t0``, ...).
+          * ``extended``     — the remaining result keys (optional for the reader).
+          * ``dictionary``   — every variable of the workbook with its description.
+          * ``grubbs``       — one row per G-test (matched by ``row`` on read).
+          * ``output_rows``  — one row per ``(delta1, delta2)`` experiment
+            (matched by ``(delta1, delta2)`` on read).
+        """
         if openpyxl is None:
             messagebox.showerror(self.t("export_error"), "openpyxl not installed")
             return
         try:
-            payload = self._build_export_payload(result)
+            if self.last_input is None:
+                raise ValueError("No input data to export.")
             path = filedialog.asksaveasfilename(
                 title=self.t("export_title"),
                 defaultextension=".xlsx",
@@ -451,41 +535,8 @@ class App(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[misc]
             if not path:
                 return
 
-            wb = openpyxl.Workbook()
-            ws_input = wb.active
-            ws_input.title = "input"
-            ws_input.append(["idx", "delta1", "delta2", "x1", "x2", "x3", "y1", "y2", "y3"])
-            for exp in payload["input"]["experiments"]:
-                ws_input.append([
-                    exp["idx"], exp["delta1"], exp["delta2"],
-                    exp["x1"], exp["x2"], exp["x3"],
-                    exp["y1"], exp["y2"], exp["y3"],
-                ])
+            write_self_check_xlsx(Path(path), self.last_input, result, lang=self.lang.get())
 
-            ws_crit = wb.create_sheet("criteria")
-            ws_crit.append(["g_crit", "t_crit", "f_crit"])
-            ws_crit.append([
-                payload["input"]["g_crit"],
-                payload["input"]["t_crit"],
-                payload["input"]["f_crit"],
-            ])
-
-            ws_res = wb.create_sheet("result")
-            coeffs = result["coefficients"]
-            coeffs_v = result["coefficients_v"]
-            t_tests = result["t_tests"]
-            ws_res.append(["b0", coeffs["b0"], "b1", coeffs["b1"], "b2", coeffs["b2"]])
-            ws_res.append(["b0_v", coeffs_v["b0"], "b1_v", coeffs_v["b1"], "b2_v", coeffs_v["b2"]])
-            ws_res.append(["t_0", t_tests["t0"], "t_1", t_tests["t1"], "t_2", t_tests["t2"]])
-            ws_res.append(["F", result["f_value"], "F_crit", result["f_crit"]])
-            ws_res.append(["G_crit", result["g_crit"], "t_crit", result["t_crit"]])
-
-            ws_g = wb.create_sheet("grubbs")
-            ws_g.append(["row", "G", "status"])
-            for g in result["g_tests"]:
-                ws_g.append([g["row"], g["g"], g["ok"]])
-
-            wb.save(path)
             messagebox.showinfo(self.t("export_title"), self.t("export_done"))
         except Exception as exc:
             messagebox.showerror(self.t("export_error"), str(exc))

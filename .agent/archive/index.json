@@ -1,0 +1,49 @@
+{
+  "version": "3.0.0",
+  "archived_at": "2026-10-21T15:12:23Z",
+  "tasks": [
+    {
+      "id": "T0",
+      "title": "Audit nts/cli.py: confirm KeyError('equation') on examples/default.json",
+      "archived_at": "2026-10-21T15:12:23Z"
+    },
+    {
+      "id": "T1",
+      "title": "Fix math model in nts/core.py: t-test on coded coefs with s_v = sqrt(s2_vos / N)",
+      "archived_at": "2026-10-21T15:12:23Z"
+    },
+    {
+      "id": "T2",
+      "title": "Verify t_0, t_1, t_2 in GUI output and CLI for both examples/",
+      "archived_at": "2026-10-21T15:12:23Z"
+    },
+    {
+      "id": "T3",
+      "title": "Refactor nts/gui.py: remove duplicates, extract i18n, extract equation formatter, add __version__",
+      "archived_at": "2026-10-21T15:12:23Z"
+    },
+    {
+      "id": "T4",
+      "title": "Add pytest tests for nts.core.compute",
+      "archived_at": "2026-10-21T15:12:23Z"
+    },
+    {
+      "id": "T5",
+      "title": "Baseline test report + project-state refresh",
+      "archived_at": "2026-10-21T15:12:23Z"
+    },
+    {
+      "id": "T6",
+      "title": "Self-check workbook: core/extended split, optional extended, variable dictionary",
+      "archived_at": "2026-10-21T15:12:23Z"
+    }
+  ],
+  "requests": [
+    {
+      "id": "req-self-check-core-extended",
+      "task_id": "T6",
+      "archived_at": "2026-10-21T15:12:23Z"
+    }
+  ],
+  "checkpoints": []
+}

@@ -1,0 +1,21 @@
+{
+  "id": "T0",
+  "title": "Audit nts/cli.py: confirm KeyError('equation') on examples/default.json",
+  "description": "Reproduce TD-11 via `python -m nts.cli --input examples/default.json`. Capture traceback. No code change yet.",
+  "type": "fix",
+  "status": "completed",
+  "origin": "agent:analysis",
+  "files": [
+    "nts/cli.py",
+    "nts/core.py",
+    "nts/gui.py"
+  ],
+  "depends_on": [],
+  "acceptance_criteria": [
+    "Confirmed: print_report references result['equation'] which compute() never returns",
+    "Traceback captured to .agent/context/baseline-issues.txt"
+  ],
+  "context": "Done inline; see shell output above.",
+  "archived_at": "2026-10-21T15:12:11Z",
+  "archive_reason": "completed and verified (METASTATE 6.3)"
+}

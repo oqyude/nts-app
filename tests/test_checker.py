@@ -38,6 +38,7 @@ distinct values. NO hardcoded ``g_crit``/``t_crit``/``f_crit`` literals (see
 from __future__ import annotations
 
 import json
+import tempfile
 import math
 import os
 import subprocess
@@ -47,7 +48,15 @@ from typing import Any, Dict
 
 import pytest
 
-from nts.checker import CheckEntry, CheckResult, Tolerance, print_checklist, verify
+from nts.checker import (
+    MODE_FULL,
+    MODE_SIMPLIFIED,
+    CheckEntry,
+    CheckResult,
+    Tolerance,
+    print_checklist,
+    verify,
+)
 
 
 # ---- helpers ---------------------------------------------------------------
@@ -126,15 +135,23 @@ def _numeric_compute_result(
     t1: float = 4.0,
     t2: float = 3.0,
     signs: tuple[str, str, str] = ("+", "+", "+"),
+    f_avg: float = 50.0,
+    f_value: float = 5.0,
     f_result_code: str = "not_rejected",
     equation: str = "Y = b0 + b1·δ1 + b2·δ2",
     f_result: str = "F < F_cr → уравнение адекватно",
+    g_crit_echo: float = 0.5,
+    t_crit_echo: float = 2.0,
+    f_crit_echo: float = 100.0,
     g_tests: list[Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     """Build a full ComputeResult-shaped dict with NUMERIC + DISCRETE fields.
 
     All values are arbitrary distinct constants — NO ``g_crit``/``t_crit``/
-    ``f_crit`` literals (per ``.agent/rules/project-rules.md:30``).
+    ``f_crit`` literals (per ``.agent/rules/project-rules.md:30``). The
+    ``*_echo`` keys are arbitrary echoes for fields the loader/writer treat as
+    scalars (the function avoids the bare names ``g_crit``/``t_crit``/``f_crit``
+    so callers can pick distinct values for input vs expected payloads).
     """
     if g_tests is None:
         g_tests = [_make_g_test(i + 1) for i in range(4)]
@@ -153,9 +170,14 @@ def _numeric_compute_result(
             "t2": t2,
         },
         "g_tests": g_tests,
+        "f_avg": f_avg,
+        "f_value": f_value,
         "f_result_code": f_result_code,
         "equation": equation,
         "f_result": f_result,
+        "g_crit": g_crit_echo,
+        "t_crit": t_crit_echo,
+        "f_crit": f_crit_echo,
     }
 
 
@@ -253,10 +275,10 @@ def test_tolerance_overrides_accepted() -> None:
 def test_verify_numeric_tolerance_pass() -> None:
     """NUMERIC delta within coeff_abs (1e-4 ≤ 1e-3) → all NUMERIC entries pass.
 
-    Todo 3 adds 4 per-row ``g_tests.g`` numeric entries; 19 numeric total
-    (12 coefficient-like under ``coeff_abs`` + 3 ``t_tests`` under ``t_abs``
-    + 4 ``g_tests.g`` per-row under ``coeff_abs``). Discrete entries remain 10.
-    Grand total = 29 entries.
+    19 NUMERIC scalar entries (12 coefficient-like under ``coeff_abs``
+    + 3 ``t_tests`` under ``t_abs`` + 4 ``g_tests.g`` per-row under
+    ``coeff_abs``) + 1 NUMERIC ``f_value`` under ``f_abs`` = 20 NUMERIC entries.
+    Plus 10 DISCRETE entries. Grand total = 30 entries.
     """
     actual = _numeric_compute_result()
     expected = _numeric_compute_result()
@@ -265,11 +287,11 @@ def test_verify_numeric_tolerance_pass() -> None:
 
     assert isinstance(result, CheckResult)
     assert result.failed == 0
-    assert result.passed == 29
-    assert len(result.entries) == 29
+    assert result.passed == 30
+    assert len(result.entries) == 30
 
     numeric_entries = [e for e in result.entries if e.diff is not None]
-    assert len(numeric_entries) == 19
+    assert len(numeric_entries) == 20
     assert all(e.passed for e in numeric_entries)
     assert all(e.diff == pytest.approx(0.0) for e in numeric_entries)
 
@@ -693,6 +715,242 @@ def test_parse_self_check_file_empty_raises(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError):
         parse_self_check_file(path)
+
+
+# ---- Todo 4b: parse_self_check_xlsx + parse_self_check_file dispatch --------
+
+
+def _tiny_input_xlsx_payload() -> "InputData":
+    from nts.core import InputData, Experiment
+
+    return InputData(
+        experiments=[
+            Experiment(
+                idx=1, delta1=-1, delta2=-1,
+                x1=10.0, x2=20.0, x3=30.0,
+                y1=100, y2=110, y3=120,
+            ),
+            Experiment(
+                idx=2, delta1=1, delta2=-1,
+                x1=11.0, x2=21.0, x3=31.0,
+                y1=101, y2=111, y3=121,
+            ),
+        ],
+        g_crit=0.5,
+        t_crit=2.0,
+        f_crit=100.0,
+    )
+
+
+def _full_compute_result_for_xlsx() -> Dict[str, Any]:
+    """Same shape as :func:`_numeric_compute_result`, plus ``output_rows``.
+
+    The xlsx writer/loader both round-trip the per-experiment ``output_rows``
+    list, so the test fixture must populate it explicitly.
+    """
+    base = _numeric_compute_result()
+    base["output_rows"] = [
+        {
+            "delta1": -1.0, "delta2": -1.0, "y_avg": 110.0,
+            "y_pred": 109.5, "y_avg_minus_y": 0.5, "y_avg_minus_y_sq": 0.25,
+        },
+        {
+            "delta1": 1.0, "delta2": -1.0, "y_avg": 111.0,
+            "y_pred": 110.5, "y_avg_minus_y": 0.5, "y_avg_minus_y_sq": 0.25,
+        },
+    ]
+    return base
+
+
+def test_parse_self_check_xlsx_happy(tmp_path: Path) -> None:
+    """``write_self_check_xlsx`` then ``parse_self_check_file`` (xlsx dispatch) round-trips."""
+    from nts.checker import parse_self_check_file, write_self_check_xlsx
+
+    payload_in = _tiny_input_xlsx_payload()
+    expected = _full_compute_result_for_xlsx()
+
+    path = tmp_path / "self_check.xlsx"
+    write_self_check_xlsx(path, payload_in, expected)
+
+    input_data, got_expected = parse_self_check_file(path)
+
+    assert input_data.experiments == payload_in.experiments
+    assert input_data.g_crit == pytest.approx(0.5)
+    assert input_data.t_crit == pytest.approx(2.0)
+    assert input_data.f_crit == pytest.approx(100.0)
+    assert got_expected["coefficients"]["b0"] == pytest.approx(1.0)
+    assert got_expected["coefficients_v"]["b0"] == pytest.approx(10.0)
+    assert got_expected["z_averages"]["z2_avg"] == pytest.approx(2.5)
+    assert got_expected["t_tests"]["t0"] == pytest.approx(5.0)
+    assert got_expected["t_tests"]["sign_b1"] == "+"
+    assert got_expected["g_tests"][0]["ok"] == "ok"
+    assert got_expected["equation"] == "Y = b0 + b1·δ1 + b2·δ2"
+
+
+def test_parse_self_check_xlsx_round_trip_via_dispatch(tmp_path: Path) -> None:
+    """Both ``parse_self_check_xlsx`` and the dispatching ``parse_self_check_file`` yield equivalent data."""
+    from nts.checker import (
+        parse_self_check_file,
+        parse_self_check_xlsx,
+        write_self_check_xlsx,
+    )
+
+    payload_in = _tiny_input_xlsx_payload()
+    expected = _full_compute_result_for_xlsx()
+
+    path = tmp_path / "round_trip.xlsx"
+    write_self_check_xlsx(path, payload_in, expected)
+
+    via_dispatch = parse_self_check_file(path)
+    via_xlsx = parse_self_check_xlsx(path)
+
+    assert via_dispatch[0].experiments == via_xlsx[0].experiments
+    assert via_dispatch[1] == via_xlsx[1]
+
+
+def test_parse_self_check_xlsx_missing_input_sheet_raises(tmp_path: Path) -> None:
+    """Workbook without ``input`` sheet → ``ValueError`` mentioning ``input``."""
+    import openpyxl
+
+    from nts.checker import parse_self_check_xlsx
+
+    path = tmp_path / "no_input.xlsx"
+    wb = openpyxl.Workbook()
+    wb.active.title = "result"
+    wb.create_sheet("criteria")
+    wb.save(path)
+
+    with pytest.raises(ValueError, match="input"):
+        parse_self_check_xlsx(path)
+
+
+def test_parse_self_check_xlsx_missing_criteria_sheet_raises(tmp_path: Path) -> None:
+    """Workbook without ``criteria`` sheet → ``ValueError`` mentioning ``criteria``."""
+    import openpyxl
+
+    from nts.checker import parse_self_check_xlsx
+
+    path = tmp_path / "no_crit.xlsx"
+    wb = openpyxl.Workbook()
+    wb.active.title = "input"
+    wb.create_sheet("result")
+    wb.save(path)
+
+    with pytest.raises(ValueError, match="criteria"):
+        parse_self_check_xlsx(path)
+
+
+def test_parse_self_check_xlsx_missing_result_sheet_raises(tmp_path: Path) -> None:
+    """Workbook without ``result`` sheet → ``ValueError`` mentioning ``result``."""
+    import openpyxl
+
+    from nts.checker import parse_self_check_xlsx
+
+    path = tmp_path / "no_res.xlsx"
+    wb = openpyxl.Workbook()
+    wb.active.title = "input"
+    wb.create_sheet("criteria")
+    wb.save(path)
+
+    with pytest.raises(ValueError, match="result"):
+        parse_self_check_xlsx(path)
+
+
+def test_parse_self_check_xlsx_criteria_kv_layout(tmp_path: Path) -> None:
+    """Criteria sheet accepts key/value layout (no header row) as a second option."""
+    from nts.checker import parse_self_check_xlsx, write_self_check_xlsx
+
+    import openpyxl
+
+    payload_in = _tiny_input_xlsx_payload()
+    expected = _full_compute_result_for_xlsx()
+    path = tmp_path / "kv.xlsx"
+    write_self_check_xlsx(path, payload_in, expected)
+
+    wb = openpyxl.load_workbook(path)
+    crit = wb["criteria"]
+    crit.delete_rows(1)  # drop header
+    crit["A1"] = "g_crit"
+    crit["B1"] = "0.5"
+    crit["A2"] = "t_crit"
+    crit["B2"] = "2.0"
+    crit["A3"] = "f_crit"
+    crit["B3"] = "100.0"
+    wb.save(path)
+
+    input_data, _ = parse_self_check_xlsx(path)
+    assert input_data.g_crit == pytest.approx(0.5)
+    assert input_data.t_crit == pytest.approx(2.0)
+    assert input_data.f_crit == pytest.approx(100.0)
+
+
+def test_parse_self_check_file_unsupported_extension_raises(tmp_path: Path) -> None:
+    """``parse_self_check_file`` dispatch rejects extensions outside json/xlsx/xlsm."""
+    from nts.checker import parse_self_check_file
+
+    path = tmp_path / "self_check.txt"
+    path.write_text("ignored", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unsupported"):
+        parse_self_check_file(path)
+
+
+def test_parse_self_check_file_xlsm_dispatch(tmp_path: Path) -> None:
+    """``.xlsm`` (macro workbook) is accepted by the dispatcher and forwarded to the xlsx loader."""
+    from nts.checker import parse_self_check_file, write_self_check_xlsx
+
+    payload_in = _tiny_input_xlsx_payload()
+    expected = _full_compute_result_for_xlsx()
+    path = tmp_path / "self_check.xlsm"
+    write_self_check_xlsx(path, payload_in, expected)
+
+    input_data, got_expected = parse_self_check_file(path)
+    assert input_data.g_crit == pytest.approx(0.5)
+    assert got_expected["coefficients"]["b1"] == pytest.approx(2.0)
+
+
+# ---- GUI plumbing: drag-and-drop extension allowlist + i18n ---------------
+#
+# These are smoke tests, not full Tk interop tests (no display available in CI).
+# They pin the regression where the constant was class-scoped (caused NameError
+# at runtime when referenced by bare name inside a method).
+
+
+def test_reverse_gui_allowed_ext_constant_resolves_at_call_time() -> None:
+    """``_ALLOWED_SELF_CHECK_EXTS`` must resolve via bare name inside a method body.
+
+    A previous build declared the frozenset as a class attribute and referenced
+    it by bare name from inside ``_on_drop``. Class-scope names are not visible
+    to methods in Python, so the call raised ``NameError`` and DnD silently
+    failed for every extension (not just xlsx). This regression test ensures
+    the constant resolves both ways.
+    """
+    from nts.reverse_gui import ReverseApp, _ALLOWED_SELF_CHECK_EXTS
+
+    assert _ALLOWED_SELF_CHECK_EXTS == frozenset({".json", ".xlsx", ".xlsm"})
+    assert isinstance(_ALLOWED_SELF_CHECK_EXTS, frozenset)
+    # Class may or may not re-export; tolerate either layout.
+    assert sorted(_ALLOWED_SELF_CHECK_EXTS) == [".json", ".xlsm", ".xlsx"]
+
+
+def test_reverse_i18n_strings_format_agnostic() -> None:
+    """User-facing messages must mention all 3 supported extensions, not just .json.
+
+    The button label (``reverse_load``) is intentionally short — it stays
+    format-agnostic. The descriptive strings (`reverse_drop_file`,
+    `reverse_no_data`, `reverse_no_file`) must list the actual extensions
+    so the user knows what to drop/load.
+    """
+    from nts.i18n import I18N
+
+    for lang in ("EN", "RU"):
+        s = I18N[lang]
+        for key in ("reverse_drop_file", "reverse_no_data", "reverse_no_file"):
+            assert key in s, f"missing {lang}!{key}"
+            text = s[key]
+            assert ".json" in text, f"{lang}!{key}={text!r} must mention .json"
+            assert ".xlsx" in text, f"{lang}!{key}={text!r} must mention .xlsx"
+            assert ".xlsm" in text, f"{lang}!{key}={text!r} must mention .xlsm"
 
 
 # ---- Todo 5: print_checklist() Unicode/ASCII rendering ---------------------
@@ -1136,3 +1394,448 @@ def test_cli_self_check_subprocess_mismatch(tmp_path: Path) -> None:
     assert "failed" in proc.stdout, (
         f"stdout must contain 'failed' in the summary; got {proc.stdout!r}"
     )
+
+# ---- Core vs extended: workbook split + simplified (no-extended) mode ---------
+#
+# The reference workbook keeps the *core* result keys on the ``result`` sheet
+# (yellow-marked, same cells as the hand-made reference file) and every other
+# result key on the optional ``extended`` sheet. A workbook without that sheet
+# must still be a complete, runnable check — the simplified mode compares only
+# the fields the reference file actually provides.
+
+
+def _write_reference_workbook(path: Path) -> Path:
+    """Write a full self-check workbook from the arbitrary-value test fixture."""
+    from nts.checker import write_self_check_xlsx
+
+    write_self_check_xlsx(
+        path, _tiny_input_xlsx_payload(), _full_compute_result_for_xlsx()
+    )
+    return path
+
+
+def _drop_sheet(path: Path, sheet_name: str) -> None:
+    """Remove ``sheet_name`` from the workbook at ``path`` (in place)."""
+    import openpyxl
+
+    wb = openpyxl.load_workbook(path)
+    del wb[sheet_name]
+    wb.save(path)
+
+
+def _core_expected_payload() -> Dict[str, Any]:
+    """The core-only expected payload: no ``extended`` keys at all."""
+    return {
+        "coefficients": {"b0": 1.0, "b1": 2.0, "b2": 3.0},
+        "coefficients_v": {"b0": 10.0, "b1": 20.0, "b2": 30.0},
+        "t_tests": {"t0": 5.0, "t1": 4.0, "t2": 3.0},
+        "f_value": 5.0,
+    }
+
+
+def test_write_self_check_xlsx_splits_core_and_extended(tmp_path: Path) -> None:
+    """``result`` holds the core keys only (yellow fill); ``extended`` holds the rest."""
+    import openpyxl
+
+    from nts.checker import (
+        CORE_RESULT_KEYS,
+        EXTENDED_SHEET_NAME,
+        write_self_check_xlsx,
+    )
+
+    path = tmp_path / "split.xlsx"
+    write_self_check_xlsx(
+        path, _tiny_input_xlsx_payload(), _full_compute_result_for_xlsx()
+    )
+
+    wb = openpyxl.load_workbook(path)
+    assert EXTENDED_SHEET_NAME in wb.sheetnames
+
+    res = wb["result"]
+    res_keys = [row[0] for row in res.iter_rows(min_row=2, values_only=True) if row[0]]
+    ext = wb[EXTENDED_SHEET_NAME]
+    ext_keys = [row[0] for row in ext.iter_rows(min_row=2, values_only=True) if row[0]]
+
+    assert set(res_keys) == set(CORE_RESULT_KEYS)
+    assert "equation" in ext_keys, "non-core keys must live on the extended sheet"
+    assert not (set(res_keys) & set(ext_keys)), "a key cannot be on both sheets"
+
+    # Core value cells are yellow-marked; extended cells stay unstyled.
+    for row in res.iter_rows(min_row=2):
+        if row[0] is None:
+            continue
+        assert row[1].fill.patternType == "solid"
+        assert row[1].fill.fgColor.rgb == "FFFFFF00"
+    for row in ext.iter_rows(min_row=2):
+        if row[0] is None:
+            continue
+        assert row[1].fill.patternType in (None, "none")
+
+
+def test_parse_self_check_xlsx_merges_extended_sheet(tmp_path: Path) -> None:
+    """The optional ``extended`` sheet is merged into the expected payload."""
+    from nts.checker import MODE_FULL, parse_self_check_bundle
+
+    path = _write_reference_workbook(tmp_path / "full.xlsx")
+    bundle = parse_self_check_bundle(path)
+
+    assert bundle.mode == MODE_FULL, "an extended sheet declares full coverage"
+    assert bundle.expected["equation"] == "Y = b0 + b1·δ1 + b2·δ2"
+    assert bundle.expected["coefficients"]["b0"] == pytest.approx(1.0)
+    assert bundle.expected["t_tests"]["t0"] == pytest.approx(5.0)
+    # The merge must not drop the sibling keys of a nested group.
+    assert bundle.expected["t_tests"]["sign_b1"] == "+"
+    assert bundle.expected["z_averages"]["z2_avg"] == pytest.approx(2.5)
+
+
+def test_parse_self_check_bundle_without_extended_is_simplified(
+    tmp_path: Path,
+) -> None:
+    """A workbook without ``extended`` parses in simplified mode."""
+    from nts.checker import EXTENDED_SHEET_NAME, MODE_SIMPLIFIED, parse_self_check_bundle
+
+    path = _write_reference_workbook(tmp_path / "core_only.xlsx")
+    _drop_sheet(path, EXTENDED_SHEET_NAME)
+
+    bundle = parse_self_check_bundle(path)
+
+    assert bundle.mode == MODE_SIMPLIFIED
+    assert "equation" not in bundle.expected
+    assert bundle.expected["coefficients"]["b0"] == pytest.approx(1.0)
+    assert bundle.expected["t_tests"]["t0"] == pytest.approx(5.0)
+
+
+def test_verify_simplified_mode_checks_only_core_fields() -> None:
+    """``MODE_SIMPLIFIED`` compares the core keys only — optional fields are skipped."""
+    from nts.checker import MODE_SIMPLIFIED, verify
+
+    actual = _full_compute_result_for_xlsx()
+    result = verify(actual, _core_expected_payload(), mode=MODE_SIMPLIFIED)
+
+    assert result.failed == 0, (
+        f"simplified mode must not fail on absent fields; "
+        f"failures={[e.message for e in result.entries if not e.passed]!r}"
+    )
+    assert {e.name for e in result.entries} == {
+        "coefficients.b0", "coefficients.b1", "coefficients.b2",
+        "coefficients_v.b0", "coefficients_v.b1", "coefficients_v.b2",
+        "t_tests.t0", "t_tests.t1", "t_tests.t2",
+        "f_value",
+    }
+
+
+def test_verify_simplified_mode_skips_optional_sheets() -> None:
+    """In simplified mode the G-tests and the per-row output are not checked.
+
+    The reference file provides them, but they are optional fields — the
+    simplified mode reports the main (core) fields only.
+    """
+    from nts.checker import MODE_SIMPLIFIED, verify
+
+    actual = _full_compute_result_for_xlsx()
+    full_expected = _full_compute_result_for_xlsx()
+    result = verify(actual, full_expected, mode=MODE_SIMPLIFIED)
+
+    names = {e.name for e in result.entries}
+    assert not any(name.startswith("g_tests") for name in names)
+    assert not any(name.startswith("output_rows") for name in names)
+    assert names == {
+        "coefficients.b0", "coefficients.b1", "coefficients.b2",
+        "coefficients_v.b0", "coefficients_v.b1", "coefficients_v.b2",
+        "t_tests.t0", "t_tests.t1", "t_tests.t2",
+        "f_value",
+    }
+
+
+def test_verify_full_mode_reports_absent_fields() -> None:
+    """``MODE_FULL`` (default) keeps reporting absent fields as failures."""
+    from nts.checker import MODE_FULL, verify
+
+    actual = _full_compute_result_for_xlsx()
+    result = verify(actual, _core_expected_payload(), mode=MODE_FULL)
+
+    assert result.failed > 0
+    messages = " ".join(e.message for e in result.entries if not e.passed)
+    assert "missing" in messages
+
+
+def test_verify_rejects_unknown_mode() -> None:
+    """An unknown mode is a programming error, not a silent fallback."""
+    from nts.checker import verify
+
+    with pytest.raises(ValueError, match="unknown verification mode"):
+        verify(_full_compute_result_for_xlsx(), _core_expected_payload(), mode="nope")
+
+
+def test_cli_self_check_xlsx_without_extended_exits_0(
+    tmp_path: Path,
+    examples_dir: Path,
+) -> None:
+    """A workbook without ``extended`` still passes the CLI self-check.
+
+    The workbook is built from the real ``examples/default.json`` input, so the
+    expected values match the computation exactly — the only difference is the
+    missing ``extended`` sheet.
+    """
+    from nts.checker import EXTENDED_SHEET_NAME, write_self_check_xlsx
+    from nts.core import compute, read_input_file
+
+    input_data = read_input_file(examples_dir / "default.json")
+    result = compute(input_data)
+
+    path = tmp_path / "core_only.xlsx"
+    write_self_check_xlsx(path, input_data, result)
+    _drop_sheet(path, EXTENDED_SHEET_NAME)
+
+    proc = _run_cli("--input", str(path), "--self-check")
+
+    assert proc.returncode == 0, (
+        f"core-only workbook must exit 0; got {proc.returncode!r}; "
+        f"stdout={proc.stdout!r}; stderr={proc.stderr!r}"
+    )
+    assert "0 failed" in proc.stdout, (
+        f"checklist summary must report no failures; got {proc.stdout!r}"
+    )
+
+
+def test_cli_self_check_xlsx_with_extended_exits_0(
+    tmp_path: Path,
+    examples_dir: Path,
+) -> None:
+    """The same workbook with an ``extended`` sheet also passes (full mode)."""
+    from nts.checker import write_self_check_xlsx
+    from nts.core import compute, read_input_file
+
+    input_data = read_input_file(examples_dir / "default.json")
+    result = compute(input_data)
+
+    path = tmp_path / "full.xlsx"
+    write_self_check_xlsx(path, input_data, result)
+
+    proc = _run_cli("--input", str(path), "--self-check")
+
+    assert proc.returncode == 0, (
+        f"full workbook must exit 0; got {proc.returncode!r}; "
+        f"stdout={proc.stdout!r}; stderr={proc.stderr!r}"
+    )
+    assert "0 failed" in proc.stdout
+
+
+# ---- Human-readable variable dictionary -------------------------------------
+#
+# The machine keys stay stable; the dictionary says what each of them means.
+# It feeds the Excel ``description`` column and the GUI checklist.
+
+
+def test_dictionary_describes_every_core_key() -> None:
+    """Every core key has a description in both languages."""
+    from nts.checker import CORE_RESULT_KEYS
+    from nts.dictionary import UNKNOWN_DESCRIPTION, describe
+
+    for key in CORE_RESULT_KEYS:
+        for lang in ("EN", "RU"):
+            text = describe(key, lang)
+            assert text != UNKNOWN_DESCRIPTION, f"{lang}: no description for {key!r}"
+            assert text.strip(), f"{lang}: empty description for {key!r}"
+
+
+def test_dictionary_describes_every_written_result_key() -> None:
+    """Every key the writer emits has a description (no empty cells)."""
+    from nts.checker import write_self_check_xlsx
+    from nts.dictionary import UNKNOWN_DESCRIPTION, describe
+
+    path = Path(tempfile.gettempdir()) / "nts_dict_probe.xlsx"
+    write_self_check_xlsx(
+        path, _tiny_input_xlsx_payload(), _full_compute_result_for_xlsx()
+    )
+    import openpyxl
+
+    wb = openpyxl.load_workbook(path)
+    for sheet in ("result", "extended"):
+        for row in wb[sheet].iter_rows(min_row=2, values_only=True):
+            if not row[0]:
+                continue
+            assert row[2] != UNKNOWN_DESCRIPTION, f"no description for {row[0]!r}"
+            assert row[2] == describe(row[0], "RU")
+
+
+def test_dictionary_describe_entry_resolves_container_prefix() -> None:
+    """Checklist entry names resolve to the description of their variable."""
+    from nts.dictionary import UNKNOWN_DESCRIPTION, describe, describe_entry
+
+    assert describe_entry("coefficients.b0", "RU") == describe("coefficients.b0", "RU")
+    assert describe_entry("g_tests[row=1].g", "RU") == describe("g", "RU")
+    assert describe_entry(
+        "output_rows[-1.0, -1.0].y_avg", "EN"
+    ) == describe("y_avg", "EN")
+    assert describe_entry("totally.unknown", "RU") == UNKNOWN_DESCRIPTION
+
+
+def test_write_self_check_xlsx_adds_description_column(tmp_path: Path) -> None:
+    """Both key/value sheets carry a ``description`` column."""
+    import openpyxl
+
+    from nts.checker import EXTENDED_SHEET_NAME, write_self_check_xlsx
+    from nts.dictionary import describe
+
+    path = tmp_path / "described.xlsx"
+    write_self_check_xlsx(
+        path, _tiny_input_xlsx_payload(), _full_compute_result_for_xlsx(), lang="RU"
+    )
+
+    wb = openpyxl.load_workbook(path)
+    for sheet in ("result", EXTENDED_SHEET_NAME):
+        ws = wb[sheet]
+        assert [c.value for c in ws[1]] == ["key", "value", "description"]
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not row[0]:
+                continue
+            assert row[2] == describe(row[0], "RU")
+
+
+def test_write_self_check_xlsx_round_trips_with_description_column(
+    tmp_path: Path,
+) -> None:
+    """The reader tolerates the extra description column."""
+    from nts.checker import parse_self_check_bundle, write_self_check_xlsx
+
+    path = tmp_path / "round_trip_described.xlsx"
+    write_self_check_xlsx(
+        path, _tiny_input_xlsx_payload(), _full_compute_result_for_xlsx(), lang="EN"
+    )
+
+    bundle = parse_self_check_bundle(path)
+    assert bundle.expected["coefficients"]["b0"] == pytest.approx(1.0)
+    assert bundle.expected["equation"] == "Y = b0 + b1·δ1 + b2·δ2"
+
+
+def test_print_checklist_includes_description_when_lang_given(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``print_checklist(lang=...)`` appends the human description."""
+    from nts.checker import print_checklist
+    from nts.dictionary import describe
+
+    entry = CheckEntry(
+        name="coefficients.b0",
+        passed=True,
+        actual=1.0,
+        expected=1.0,
+        diff=0.0,
+        message="",
+    )
+    print_checklist(CheckResult(passed=1, failed=0, entries=[entry]), lang="RU")
+
+    out = capsys.readouterr().out
+    assert describe("coefficients.b0", "RU") in out
+    assert "coefficients.b0" in out
+
+
+# ---- Reverse GUI: verification modes -----------------------------------------
+#
+# The reverse GUI verifies in the simplified mode by default and switches to
+# the extended mode automatically when the loaded file carries an ``extended``
+# sheet.
+
+
+def _reverse_app_stub(
+    *,
+    mode_code: str = "auto",
+    file_mode: str = MODE_SIMPLIFIED,
+):
+    """A :class:`ReverseApp` without a Tk root (no display needed)."""
+    from nts.reverse_gui import ReverseApp
+
+    app = ReverseApp.__new__(ReverseApp)
+    app.mode_code = mode_code
+    app.file_mode = file_mode
+    return app
+
+
+def test_reverse_gui_mode_defaults_to_simplified() -> None:
+    """Without a file the reverse GUI would verify in the simplified mode."""
+    app = _reverse_app_stub(mode_code="auto", file_mode=MODE_SIMPLIFIED)
+    assert app._effective_mode() == MODE_SIMPLIFIED
+    assert app._effective_mode_code() == "simplified"
+
+
+def test_reverse_gui_mode_auto_follows_extended_sheet() -> None:
+    """An ``extended`` sheet switches the automatic mode to extended."""
+    app = _reverse_app_stub(mode_code="auto", file_mode=MODE_FULL)
+    assert app._effective_mode() == MODE_FULL
+    assert app._effective_mode_code() == "full"
+
+
+def test_reverse_gui_mode_selector_overrides_file_mode() -> None:
+    """The explicit selector wins over what the file implies."""
+    app = _reverse_app_stub(mode_code="simplified", file_mode=MODE_FULL)
+    assert app._effective_mode() == MODE_SIMPLIFIED
+
+    app = _reverse_app_stub(mode_code="full", file_mode=MODE_SIMPLIFIED)
+    assert app._effective_mode() == MODE_FULL
+
+
+def test_reverse_gui_has_description_column() -> None:
+    """The checklist shows a description column next to the field name."""
+    from nts.reverse_gui import _CHECKLIST_COLUMNS
+
+    assert "description" in _CHECKLIST_COLUMNS
+    assert _CHECKLIST_COLUMNS.index("description") == 2
+
+
+def test_reverse_i18n_has_mode_and_description_strings() -> None:
+    """Both languages carry the mode selector and the description column."""
+    from nts.i18n import I18N
+
+    for lang in ("EN", "RU"):
+        s = I18N[lang]
+        for key in (
+            "reverse_mode",
+            "reverse_mode_auto",
+            "reverse_mode_simplified",
+            "reverse_mode_full",
+            "reverse_mode_current",
+            "reverse_col_description",
+        ):
+            assert key in s, f"missing {lang}!{key}"
+
+
+def test_write_self_check_xlsx_writes_dictionary_sheet(tmp_path: Path) -> None:
+    """The workbook carries a ``dictionary`` sheet with every variable."""
+    import openpyxl
+
+    from nts.checker import DICTIONARY_SHEET_NAME, write_self_check_xlsx
+    from nts.dictionary import DESCRIPTIONS
+
+    path = tmp_path / "with_dictionary.xlsx"
+    write_self_check_xlsx(
+        path, _tiny_input_xlsx_payload(), _full_compute_result_for_xlsx(), lang="RU"
+    )
+
+    wb = openpyxl.load_workbook(path)
+    ws = wb[DICTIONARY_SHEET_NAME]
+    assert [c.value for c in ws[1]] == ["key", "description"]
+
+    entries = {
+        row[0]: row[1]
+        for row in ws.iter_rows(min_row=2, values_only=True)
+        if row[0]
+    }
+    assert entries["coefficients.b0"] == DESCRIPTIONS["RU"]["coefficients.b0"]
+    # Column names of the other sheets are covered too.
+    assert entries["x1"] == DESCRIPTIONS["RU"]["x1"]
+    assert entries["y_avg_minus_y_sq"] == DESCRIPTIONS["RU"]["y_avg_minus_y_sq"]
+
+
+def test_parse_self_check_xlsx_ignores_dictionary_sheet(tmp_path: Path) -> None:
+    """The extra ``dictionary`` sheet does not disturb the reader."""
+    from nts.checker import parse_self_check_bundle, write_self_check_xlsx
+
+    path = tmp_path / "with_dictionary_read.xlsx"
+    write_self_check_xlsx(
+        path, _tiny_input_xlsx_payload(), _full_compute_result_for_xlsx()
+    )
+
+    bundle = parse_self_check_bundle(path)
+    assert bundle.expected["coefficients"]["b0"] == pytest.approx(1.0)
+    assert "dictionary" not in bundle.expected

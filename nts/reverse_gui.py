@@ -23,17 +23,35 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from typing import Any, Optional
 
-from .checker import CheckResult, parse_self_check_file, print_checklist, verify
+from .checker import (
+    MODE_FULL,
+    MODE_SIMPLIFIED,
+    CheckResult,
+    parse_self_check_bundle,
+    print_checklist,
+    verify,
+)
 from .core import ComputeResult, InputData, compute
+from .dictionary import describe_entry
 from .gui import DND_AVAILABLE, DND_FILES, TkinterDnD, extract_dropped_path
 from .i18n import DEFAULT_LANGUAGE, I18N, LANGUAGES, normalize_lang
-
 
 # Keep the checklist row schema tight: one tuple per visible column. Order
 # matches the Treeview ``columns=`` declaration in :meth:`ReverseApp._build_ui`.
 _CHECKLIST_COLUMNS: tuple[str, ...] = (
-    "icon", "name", "actual", "expected", "diff", "message",
+    "icon", "name", "description", "actual", "expected", "diff", "message",
 )
+
+#: Verification modes offered by the mode selector. ``auto`` follows the file:
+#: simplified unless the workbook carries an ``extended`` sheet.
+_MODE_CODES: tuple[str, ...] = ("auto", "simplified", "full")
+
+#: i18n key of the label of each mode code (see ``_MODE_CODES``).
+_MODE_LABEL_KEYS: dict[str, str] = {
+    "auto": "reverse_mode_auto",
+    "simplified": "reverse_mode_simplified",
+    "full": "reverse_mode_full",
+}
 
 
 def _format_cell(value: Any, missing_label: str) -> str:
@@ -56,17 +74,24 @@ def _format_diff(diff: Optional[float], missing_label: str) -> str:
     return f"{diff:.6g}"
 
 
+_ALLOWED_SELF_CHECK_EXTS: frozenset[str] = frozenset({".json", ".xlsx", ".xlsm"})
+
+
 class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[misc]
     """Self-check GUI window."""
 
     def __init__(self) -> None:
         super().__init__()
-        self.geometry("900x560")
+        self.geometry("1100x560")
         self.lang = tk.StringVar(value=DEFAULT_LANGUAGE)
         self.selected_file = tk.StringVar(value="")
         self.last_payload: Optional[InputData] = None
         self.last_expected: Optional[ComputeResult] = None
         self.last_result: Optional[CheckResult] = None
+        #: Mode selected by the user: ``auto`` | ``simplified`` | ``full``.
+        self.mode_code = "auto"
+        #: Mode implied by the loaded file (resolved when the file is read).
+        self.file_mode = MODE_SIMPLIFIED
 
         self._build_ui()
         self._apply_lang()
@@ -112,6 +137,15 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
         self.lang_combo.pack(side=tk.LEFT)
         self.lang_combo.bind("<<ComboboxSelected>>", lambda _e: self._apply_lang())
 
+        self.mode_label = ttk.Label(top)
+        self.mode_label.pack(side=tk.LEFT, padx=(14, 4))
+        self.mode_var = tk.StringVar(value="")
+        self.mode_combo = ttk.Combobox(
+            top, values=[], textvariable=self.mode_var, state="readonly", width=18,
+        )
+        self.mode_combo.pack(side=tk.LEFT)
+        self.mode_combo.bind("<<ComboboxSelected>>", self._on_mode_selected)
+
         self.label_dnd_hint: ttk.Label | None = None
         if not DND_AVAILABLE:
             self.label_dnd_hint = ttk.Label(top)
@@ -134,6 +168,7 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
         )
         self._tree_heading_keys = {
             "name": "reverse_col_name",
+            "description": "reverse_col_description",
             "actual": "reverse_col_actual",
             "expected": "reverse_col_expected",
             "diff": "reverse_col_diff",
@@ -141,11 +176,12 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
         }
         widths = {
             "icon": 32,
-            "name": 220,
-            "actual": 160,
-            "expected": 160,
-            "diff": 90,
-            "message": 220,
+            "name": 200,
+            "description": 260,
+            "actual": 150,
+            "expected": 150,
+            "diff": 80,
+            "message": 200,
         }
         for col in _CHECKLIST_COLUMNS:
             self.tree.heading(col, text=col)
@@ -176,6 +212,8 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
         self.btn_run.config(text=self.t("reverse_run"))
         self.btn_export.config(text=self.t("reverse_export_report"))
         self.lang_label.config(text=self.t("lang"))
+        self.mode_label.config(text=self.t("reverse_mode"))
+        self._refresh_mode_labels()
         if self.label_dnd_hint is not None:
             self.label_dnd_hint.config(text=self.t("dnd_hint"))
         for col, key in self._tree_heading_keys.items():
@@ -186,6 +224,36 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
         else:
             self.summary_var.set(self.t("reverse_no_data"))
 
+    # ---- mode selector -------------------------------------------------------
+
+    def _refresh_mode_labels(self) -> None:
+        """Rebuild the mode selector labels in the current language."""
+        labels = [self.t(_MODE_LABEL_KEYS[code]) for code in _MODE_CODES]
+        self.mode_combo.configure(values=labels)
+        self.mode_var.set(self.t(_MODE_LABEL_KEYS[self.mode_code]))
+
+    def _on_mode_selected(self, _event: tk.Event) -> None:
+        """Remember the selected mode and re-run the check with it."""
+        for code in _MODE_CODES:
+            if self.mode_var.get() == self.t(_MODE_LABEL_KEYS[code]):
+                self.mode_code = code
+                break
+        if self.last_payload is not None:
+            self._run_check()
+
+    def _effective_mode(self) -> str:
+        """Resolve the mode to verify with.
+
+        The selector wins; ``auto`` follows the file — a workbook with an
+        ``extended`` sheet is checked in full, anything else in the simplified
+        mode (core fields only).
+        """
+        if self.mode_code == "simplified":
+            return MODE_SIMPLIFIED
+        if self.mode_code == "full":
+            return MODE_FULL
+        return self.file_mode
+
     # ---- DnD / file loading -------------------------------------------------
 
     def _on_drop(self, event: tk.Event) -> None:  # type: ignore[override]
@@ -193,7 +261,7 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
         if not path:
             return
         p = Path(path)
-        if p.suffix.lower() != ".json":
+        if p.suffix.lower() not in _ALLOWED_SELF_CHECK_EXTS:
             messagebox.showerror(
                 self.t("reverse_load_error"), self.t("reverse_drop_file")
             )
@@ -204,7 +272,12 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
     def _browse_file(self) -> None:
         path = filedialog.askopenfilename(
             title=self.t("reverse_load"),
-            filetypes=[("Self-check JSON", "*.json"), ("All files", "*.*")],
+            filetypes=[
+                ("Self-check files", "*.json;*.xlsx;*.xlsm"),
+                ("JSON", "*.json"),
+                ("Excel", "*.xlsx;*.xlsm"),
+                ("All files", "*.*"),
+            ],
         )
         if not path:
             return
@@ -227,12 +300,13 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
 
     def _run_from_path(self, path: Path) -> None:
         try:
-            payload, expected = parse_self_check_file(path)
+            bundle = parse_self_check_bundle(path)
         except (ValueError, FileNotFoundError) as exc:
             messagebox.showerror(self.t("reverse_load_error"), str(exc))
             return
-        self.last_payload = payload
-        self.last_expected = expected
+        self.last_payload = bundle.input_data
+        self.last_expected = bundle.expected
+        self.file_mode = bundle.mode
         self._run_check()
 
     # ---- core verification ---------------------------------------------------
@@ -243,7 +317,7 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
             return
         try:
             actual = compute(self.last_payload)
-            result = verify(actual, self.last_expected)
+            result = verify(actual, self.last_expected, mode=self._effective_mode())
         except Exception as exc:  # noqa: BLE001 — surface everything to the user.
             messagebox.showerror(self.t("reverse_run_error"), str(exc))
             return
@@ -263,6 +337,7 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
     def _render_result(self, result: CheckResult) -> None:
         self._clear_tree()
         missing_label = self.t("missing_label")
+        lang = self.lang.get()
         for entry in result.entries:
             tag = "passed" if entry.passed else "failed"
             icon = "✓" if entry.passed else "✗"
@@ -272,6 +347,7 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
                 values=(
                     icon,
                     entry.name,
+                    describe_entry(entry.name, lang),
                     _format_cell(entry.actual, missing_label),
                     _format_cell(entry.expected, missing_label),
                     _format_diff(entry.diff, missing_label),
@@ -283,16 +359,25 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
 
     def _refresh_summary(self, result: CheckResult) -> None:
         total = result.passed + result.failed
+        mode_label = self.t(_MODE_LABEL_KEYS[self._effective_mode_code()])
         if result.failed == 0:
             self.summary_var.set(
                 self.t("reverse_summary_all_passed").format(total=total)
+                + "  " + self.t("reverse_mode_current").format(mode=mode_label)
             )
         else:
             self.summary_var.set(
                 self.t("reverse_summary_some_failed").format(
                     passed=result.passed, failed=result.failed, total=total
                 )
+                + "  " + self.t("reverse_mode_current").format(mode=mode_label)
             )
+
+    def _effective_mode_code(self) -> str:
+        """The mode code of the check in effect (``auto`` resolved)."""
+        if self.mode_code in ("simplified", "full"):
+            return self.mode_code
+        return "simplified" if self.file_mode == MODE_SIMPLIFIED else "full"
 
     # ---- export --------------------------------------------------------------
 
@@ -315,7 +400,7 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
                 if self.selected_file.get():
                     fh.write(f"# source: {self.selected_file.get()}\n")
                 fh.write("#\n")
-                print_checklist(self.last_result, file=fh)
+                print_checklist(self.last_result, file=fh, lang=self.lang.get())
             messagebox.showinfo(
                 self.t("reverse_export_title"), self.t("reverse_export_done")
             )

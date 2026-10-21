@@ -1,0 +1,22 @@
+{
+  "id": "T5",
+  "title": "Baseline test report + project-state refresh",
+  "description": "Capture `pytest -q` output to `.agent/context/baseline-test-report.log`. Update `project-state.md` to reflect post-execution state.",
+  "type": "config",
+  "status": "completed",
+  "origin": "decomposition",
+  "files": [
+    ".agent/context/baseline-test-report.log",
+    ".agent/context/project-state.md"
+  ],
+  "depends_on": [
+    "T4"
+  ],
+  "acceptance_criteria": [
+    "baseline-test-report.log exists and shows green run",
+    "project-state.md updated with all T0-T4 completed"
+  ],
+  "context": "Phase closure. Manifest refreshed to reflect actual end-of-execution state.",
+  "archived_at": "2026-10-21T15:12:11Z",
+  "archive_reason": "completed and verified (METASTATE 6.3)"
+}

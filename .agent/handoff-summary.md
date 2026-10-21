@@ -1,87 +1,86 @@
 # Handoff Summary — NTS Calculator
 
-> Session: `38dd3237-c3d7-4ade-adc7-d81bc68ec967`
-> Date: 2026-10-13
-> Author: Sisyphus
+## Session Summary
 
-## TL;DR
+**Session:** `38dd3237-c3d7-4ade-adc7-d81bc68ec967`
+**Goal:** самопроверка (self-check) с разделением «ядро / расширенное», опциональным листом `extended` и человекочитаемым словарём переменных.
+**Completed:** 7 задач (T0–T6), все архивированы
+**Pending:** 0
+**Approved requests:** `req-self-check-core-extended` → `.agent/requests/archive/`
 
-За одну сессию сделано: **инициализирован MetaAgent**, **исправлены баги в `compute()`** (включая долгожданное появление корректных `t_0, t_1, t_2`), **вынесена i18n**, **выпилен 300-строчный дубль методов в `gui.py`**, добавлены тесты (16 шт., все зелёные), CLI починен.
+## Project State
 
-**⚠ Математика выровнена по `.temp/расчет.xlsx`, не по Методичке §3.** `.agent/rules/project-rules.md` отражает Excel-формулы. Полный diff в `.agent/context/calculation-diff.md`.
+Python 3.14 / Tkinter приложение для расчёта НТС (Методичка §3 + Excel-референс `.temp/расчет.xlsx`).
 
-## Что сделано (по задачам)
+```
+nts/ core.py (вычисления)  checker.py (самопроверка)  dictionary.py (описания переменных)
+     gui.py (основной клиент)  reverse_gui.py (чек-лист)  cli.py  i18n.py
+tests/ test_core.py (16)  test_checker.py (63) → 79 passed
+```
 
-| ID | Задача | Файлы |
-|---|---|---|
-| T0 | Аудит CLI (`KeyError: equation`) | `nts/cli.py` → выявлен, починен в T3 |
-| T1 | Мат-фикс: t на кодированных + `s_v = √(s²_вос/N)` | `nts/core.py:332-359` |
-| T2 | Верификация t0/t1/t2 в compute() и CLI | `python -m nts.cli` |
-| T3 | Refactor GUI + i18n.extract + equation key | `nts/gui.py`, `nts/i18n.py`, `nts/__init__.py` |
-| T4 | Тесты pytest | `tests/conftest.py`, `tests/test_core.py` |
-| T5 | Baseline test report | `.agent/context/baseline-test-report.log` |
+Ключевые решения текущего состояния:
+
+- **Ядро проверки** — 10 ключей (`f_value`, `coefficients.b0..b2`, `coefficients_v.b0..b2`, `t_tests.t0..t2`), они лежат на листе `result` (жёлтая заливка — только метка).
+- **`extended`** — опциональный лист с остальными 16 ключами; его наличие переводит проверку в расширенный режим (54 поля), отсутствие — в упрощённый (только 10 основных).
+- **Цвет в логике не участвует**: ни одна строка кода не читает заливку; эксперимент «снять все 10 заливок» → 54/54 без изменений.
+- **Словарь** (`nts/dictionary.py`, RU/EN, 45 записей) → колонка `description` в Excel, лист `dictionary`, колонка «Описание» в reverse-GUI, приглушённая подпись под значением в основном GUI.
+
+## Что сделано за цикл самопроверки (T6)
+
+| Что | Где |
+|---|---|
+| Разделение `result`/`extended` + жёлтое ядро | `nts/checker.py` (`CORE_RESULT_KEYS`, `write_self_check_xlsx`) |
+| Опциональный `extended` + слияние в expected | `nts/checker.py` (`_load_xlsx_bundle`, `_merge_expected`) |
+| Режимы `MODE_SIMPLIFIED` / `MODE_FULL` | `nts/checker.py` (`verify`, `_select_core_expected`) |
+| Упрощённый режим + авто-переключение + селектор режима | `nts/reverse_gui.py` |
+| Словарь описаний | `nts/dictionary.py` (новый) |
+| Описания в панели результата основного GUI | `nts/gui.py` (`_place_value`, `CAPTION_COLOR`) |
+| Экспорт XLSX: единый писатель, метод вернулся в класс | `nts/gui.py` → `nts.checker.write_self_check_xlsx` |
+| UTF-8 stdout/stderr в CLI | `nts/cli.py` (`_force_utf8_output`) |
+
+## Next Steps
+
+Активных задач нет. Если продолжить — кандидаты из `.agent/roadmap/sources.md`:
+1. JSON-режим самопроверки → упрощённый по умолчанию.
+2. CLI-чек-лист с описаниями (`print_checklist(lang=...)` уже умеет).
+3. CI/CD и `build.ps1 --lto=yes` — только по явному запросу.
 
 ## Как проверить
 
 ```bash
 cd S:/Git/nts-app
+python -m pytest -q                                   # → 79 passed
 
-# Тесты
-python -m pip install -r requirements-dev.txt
-python -m pytest -q                # → 15 passed
+python -m nts.cli --input examples/default_result.xlsx --self-check       # → 54 passed (расширенный)
+python -m nts.cli --input examples/default_result_core.xlsx --self-check  # → 10 passed (упрощённый)
+python -m nts.cli --input examples/default_with_expected.json --self-check # → 54 passed (JSON)
 
-# CLI
-python -m nts.cli --input examples/default.json
-# → Y = 1063.5
-# → b0: t=23.185 sign=+
-# → b1: t=0.658  sign=-
-# → b2: t=1.472  sign=-
-
-# GUI (Windows, .exe build отдельно)
-python main.py
+python main.py            # основной GUI (описания под значениями)
+python main_reverse.py    # reverse GUI (режимы + колонка «Описание»)
 ```
 
-## Что осталось / требует внимания
-
-1. **Соответствие цифрам из Методички §3, стр. 540** — есть расхождение (см. `project-state.md` → "Pending / open questions"). Если у пользователя есть пример из табл. 3.4 с конкретными y_i, можно прогнать через нашу `compute()` и сверить t_i.
-2. **CI/CD** не настроен (`.github/workflows/` существует, но в этой сессии не трогался).
-3. **`build.ps1` — `--lto=yes`**: информационная заметка, менять без запроса не нужно.
-
-## Ключевые формулы — закреплено в docstring `compute()`
-
-```
-s²_вос = Σ(y_ij − ȳ_i)² / N(m−1)         # воспроизводимость, df = N(m−1)
-S{b_i} = √(s²_вос / N)                    # стандартная ошибка кодированного b
-t_i = |b_i_coded| / S{b_i}                # Стьюдент по **кодированным** b
-F  = s²_вос / f_avg                       # Фишер df1 = N−d, df2 = N(m−1)
-```
-
-## Что НЕЛЬЗЯ делать без пересмотра формулы
-
-- Возвращать `s_v = sqrt(s2_vos / 12)` — это в √3 раз занижает ошибку.
-- Применять t-тест к натуральным `b_v` — регрессия строится по кодированным δ, и тестировать надо те b, которые в уравнении.
-- Жёстко вшивать константы типа `t_cr = 2.306` — они входные параметры.
-
-## Файлы, которых теперь нет (важно)
-
-- В `gui.py` удалены дубликаты `_build_export_payload`, `_export_json`, `_export_xlsx`, `_apply_lang` (вторая копия в строках 599-715). Если рефакторинг когда-то вытащит, что там была нужная логика, её следует **сперва ре-импортировать из истории**, а не дописывать наугад.
-
-## Новые требования
-
-```bash
-python -m pip install -r requirements-dev.txt   # для тестов
-```
-
-## Контекст в `.agent/`
+## Key Artifacts
 
 | Файл | Назначение |
 |---|---|
-| `.agent/checkpoints.json` | состояние фаз (все complete) |
-| `.agent/rules/project-rules.md` | правила проекта (math variable map, dev style) |
-| `.agent/context/analysis-report.md` | исходный анализ + 12 тех-долгов |
-| `.agent/context/project-state.md` | текущий снимок (после EXECUTION) |
-| `.agent/context/baseline-test-report.log` | `pytest -q` output |
-| `.agent/roadmap/sources.md` | источники задач + приоритеты |
-| `.agent/tasks/manifest.json` | декомпозиция по задачам T0-T5 |
-| `.agent/handoff-summary.md` | **этот файл** |
-| `.agent/src/` | исходники MetaAgent (read-only с нашей стороны) |
+| `.agent/context/project-state.md` | актуальный слепок проекта |
+| `.agent/tasks/manifest.json` | манифест (все задачи archived) |
+| `.agent/archive/tasks/T0..T6.json` | полные описания задач |
+| `.agent/archive/index.json` | индекс архива |
+| `.agent/requests/archive/req-self-check-core-extended.json` | одобренный request |
+| `.agent/roadmap/sources.md` | источники задач и кандидаты следующего цикла |
+| `.agent/context/baseline-test-report.log` | `pytest -q` output (79 passed) |
+| `.agent/context/calculation-diff.md` | Excel ↔ Методичка §3 расхождения по формулам |
+| `examples/default_result.xlsx` | эталонная книга (ядро + extended + dictionary) |
+| `examples/default_result_core.xlsx` | тот же эталон без `extended` (упрощённый режим) |
+
+## Что НЕЛЬЗЯ делать без пересмотра формулы
+
+- Возвращать `s_v = sqrt(s2_vos / 12)` — в Excel-референсе `√(s²/(N·m))`.
+- Применять t-тест к кодированным `b` — по Excel-референсу t-тест идёт по натуральным `b_v`.
+- Хардкодить `t_cr = 2.306` / `F_crit = 239` / `G_crit = 0.7679` — это входные параметры.
+- Менять CI/CD — пользователь явно не просил.
+
+## Незакоммиченное
+
+Дерево было грязным до начала сессии (правки прошлых сессий по self-check). Всё это вошло в коммит `dev` вместе с текущей работой. Служебный каталог `.metaagent-director/` (артефакт оркестратора) намеренно не коммитится.
