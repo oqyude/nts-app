@@ -1,9 +1,9 @@
 """Self-check verification for ``ComputeResult`` payloads.
 
-Todo 1 (DISCRETE): signs, f_result_code, equation, f_result, ``g_tests[i].ok``.
-Todo 2 (NUMERIC): per-category tolerance for coefficient-like fields
+DISCRETE: signs, f_result_code, equation, f_result, ``g_tests[i].ok``.
+NUMERIC: per-category tolerance for coefficient-like fields
 (``coeff_abs``) and t-tests values (``t_abs``).
-Todo 3: ``f_value`` inf/NaN policy, list-row sort-by-(key) with set validation,
+f_value policy: ``f_value`` inf/NaN handling, list-row sort-by-(key) with set validation,
 empty-expected guard, and missing/extra-key policy.
 
 DISCRETE comparison contract:
@@ -287,7 +287,7 @@ def _summarize(entries: Iterable[CheckEntry]) -> CheckResult:
     return CheckResult(passed=passed, failed=failed, entries=list(entries))
 
 
-# ---- NUMERIC comparison helpers (Todo 2) -----------------------------------
+# ---- NUMERIC comparison helpers -----------------------------------
 
 
 # Coefficient-like groups compared against ``tolerance.coeff_abs``.
@@ -356,7 +356,7 @@ def _compare_numeric(
     expected: dict[str, Any],
     tolerance: Tolerance,
 ) -> List[CheckEntry]:
-    """Emit ``CheckEntry`` rows for every NUMERIC field handled in Todo 2."""
+    """Emit ``CheckEntry`` rows for every NUMERIC field of the coefficient-like groups."""
     entries: List[CheckEntry] = []
 
     for group_name, keys in _NUMERIC_COEFF_GROUPS:
@@ -387,7 +387,7 @@ def _compare_numeric(
     return entries
 
 
-# ---- f_value NaN/inf policy (Todo 3) ---------------------------------------
+# ---- f_value NaN/inf policy ---------------------------------------
 
 
 def _check_f_value(
@@ -397,7 +397,7 @@ def _check_f_value(
 ) -> Optional[CheckEntry]:
     """Compare ``f_value`` with explicit NaN/``inf`` policy.
 
-    Rules (per ``self-check.md`` Todo 3):
+    Rules:
       * ``None,None`` → no entry;
       * one side ``None`` → "missing" entry, ``passed=False``, ``diff=None``;
       * either side ``NaN`` → "NaN never matches" entry (NaN never matches
@@ -503,7 +503,7 @@ def _compare_f_value(
     return [entry] if entry is not None else []
 
 
-# ---- g_tests row-set validation + sort-by-row (Todo 3) ---------------------
+# ---- g_tests row-set validation + sort-by-row ---------------------
 
 
 def _compare_g_tests(
@@ -604,7 +604,7 @@ def _compare_g_tests(
     return entries
 
 
-# ---- output_rows delta-tuple sort (Todo 3) ---------------------------------
+# ---- output_rows delta-tuple sort ---------------------------------
 
 
 _OUTPUT_ROW_FIELDS: tuple[str, ...] = (
@@ -809,7 +809,7 @@ def verify(
     return _summarize(entries)
 
 
-# ---- Todo 4: self-check JSON file loader -----------------------------------
+# ---- self-check JSON file loader -----------------------------------
 
 
 def parse_self_check_bundle(path: Path) -> SelfCheckBundle:
@@ -880,7 +880,7 @@ def parse_self_check_file(path: Path) -> tuple[InputData, ComputeResult]:
     return bundle.input_data, cast(ComputeResult, bundle.expected)
 
 
-# ---- Todo 4b: self-check xlsx loader + writer ------------------------------
+# ---- self-check xlsx loader + writer ------------------------------
 
 
 _REQUIRED_SELF_CHECK_SHEETS: tuple[str, ...] = ("input", "criteria", "result")
@@ -1267,7 +1267,7 @@ def write_self_check_xlsx(
     return Path(path)
 
 
-# ---- Todo 5: print_checklist() Unicode/ASCII output ------------------------
+# ---- print_checklist() Unicode/ASCII output ------------------------
 
 
 def print_checklist(

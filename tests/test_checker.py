@@ -1,19 +1,19 @@
 """Tests for nts.checker.verify() — DISCRETE + NUMERIC + LIST-SORT paths.
 
-Todo 1 (DISCRETE):
+DISCRETE:
   - t_tests.sign_b0 / sign_b1 / sign_b2
   - f_result_code
   - g_tests[i].ok (per-row, position-based)
   - equation
   - f_result
 
-Todo 2 (NUMERIC per-category tolerance):
+NUMERIC per-category tolerance:
   - coefficients / coefficients_v / z_averages / pz / delta_calc → coeff_abs
   - t_tests.t0 / t1 / t2 → t_abs
-  - g_tests[i].g per-row → coeff_abs (added in todo 3 alongside sort)
-  - f_value → f_abs (todo 3, with NaN/inf policy)
+  - g_tests[i].g per-row → coeff_abs
+  - f_value → f_abs (with NaN/inf policy)
 
-Todo 3 (f_value inf/NaN + list-row sort + empty/extra-key policy):
+f_value inf/NaN + list-row sort + empty/extra-key policy:
   - f_value: NaN never matches (even NaN==NaN); inf==inf same-sign passes;
     inf vs finite fails with diff=inf.
   - g_tests: row-set validation + sort by ``row`` key (stable) before
@@ -23,7 +23,7 @@ Todo 3 (f_value inf/NaN + list-row sort + empty/extra-key policy):
   - Empty ``expected`` → ``ValueError("expected must not be empty")``.
   - Extra keys in ``expected`` → silently ignored.
 
-Todo 4 (parse_self_check_file — JSON file loader with bad-schema detection):
+parse_self_check_file — JSON file loader with bad-schema detection:
   - happy path: minimal ``{"input": {...InputData...}, "expected":
     {...ComputeResult...}}`` payload → returns ``(InputData, ComputeResult)``;
   - missing ``input`` key → ``ValueError`` whose message mentions ``input``;
@@ -218,7 +218,7 @@ def test_check_result_dataclass() -> None:
 def test_verify_discrete_happy() -> None:
     """All DISCRETE fields equal → verify() reports zero failures.
 
-    Todo 3 adds 4 per-row ``g_tests.g`` numeric entries (one per row) on top
+    The G-test comparison adds 4 per-row ``g_tests.g`` numeric entries (one per row) on top
     of the 10 pre-existing discrete entries, so the happy path emits 14
     total entries: 10 discrete (``diff is None``) + 4 numeric (``diff == 0``).
     """
@@ -269,7 +269,7 @@ def test_tolerance_overrides_accepted() -> None:
     assert res.passed == 14
 
 
-# ---- NUMERIC per-category tolerance (Todo 2) -------------------------------
+# ---- NUMERIC per-category tolerance -------------------------------
 
 
 def test_verify_numeric_tolerance_pass() -> None:
@@ -365,7 +365,7 @@ def test_verify_per_category_tolerances() -> None:
     assert result.failed == 2
 
 
-# ---- Todo 3: f_value inf/NaN -----------------------------------------------
+# ---- f_value inf/NaN -----------------------------------------------
 
 
 def test_verify_f_value_inf_both_pass() -> None:
@@ -438,7 +438,7 @@ def test_verify_f_value_nan_safe_any() -> None:
     assert math.isnan(f_b.expected)
 
 
-# ---- Todo 3: g_tests sort-by-row + row-set validation ---------------------
+# ---- g_tests sort-by-row + row-set validation ---------------------
 
 
 def test_verify_g_tests_sort_by_row() -> None:
@@ -501,7 +501,7 @@ def test_verify_g_tests_row_set_mismatch() -> None:
     assert "5" in mismatch_entry.message
 
 
-# ---- Todo 3: output_rows sort by (delta1, delta2) tuple + delta-set check --
+# ---- output_rows sort by (delta1, delta2) tuple + delta-set check ---
 
 
 def test_verify_output_rows_sort_by_delta_tuple() -> None:
@@ -580,7 +580,7 @@ def test_verify_output_rows_delta_set_mismatch() -> None:
     )
 
 
-# ---- Todo 3: empty-expected guard + extra-key ignored ----------------------
+# ---- empty-expected guard + extra-key ignored ----------------------
 
 
 def test_verify_empty_expected_raises() -> None:
@@ -606,7 +606,7 @@ def test_verify_extra_key_in_expected_ignored() -> None:
     assert all(e.passed for e in result.entries)
 
 
-# ---- Todo 4: parse_self_check_file — JSON loader + bad-schema detection ----
+# ---- parse_self_check_file — JSON loader + bad-schema detection ----
 
 
 def _tiny_input_data() -> Dict[str, Any]:
@@ -717,7 +717,7 @@ def test_parse_self_check_file_empty_raises(tmp_path: Path) -> None:
         parse_self_check_file(path)
 
 
-# ---- Todo 4b: parse_self_check_xlsx + parse_self_check_file dispatch --------
+# ---- parse_self_check_xlsx + parse_self_check_file dispatch ---------------
 
 
 def _tiny_input_xlsx_payload() -> "InputData":
@@ -953,7 +953,7 @@ def test_reverse_i18n_strings_format_agnostic() -> None:
             assert ".xlsm" in text, f"{lang}!{key}={text!r} must mention .xlsm"
 
 
-# ---- Todo 5: print_checklist() Unicode/ASCII rendering ---------------------
+# ---- print_checklist() Unicode/ASCII rendering ---------------------
 
 
 def _tiny_check_result() -> CheckResult:
@@ -1054,9 +1054,9 @@ def test_print_checklist_includes_missing(
     assert "missing" in captured.out
 
 
-# ---- Todo 6: i18n self-check keys present in EN + RU ------------------------
+# ---- i18n self-check keys present in EN + RU ------------------------
 
-# Names of the 5 self-check i18n keys added by Todo 6 (EN_BASE + RU_OVERRIDES).
+# Names of the 5 self-check i18n keys (EN_BASE + RU_OVERRIDES).
 SELF_CHECK_KEYS: tuple[str, ...] = (
     "self_check_title",
     "summary_passed",
@@ -1069,7 +1069,7 @@ SELF_CHECK_KEYS: tuple[str, ...] = (
 def test_i18n_self_check_keys_present_en() -> None:
     """All 5 self-check keys present in ``I18N["EN"]`` with non-empty values.
 
-    Todo 6 adds 5 keys to ``EN_BASE`` in ``nts/i18n.py``. Each must be present
+    5 keys were added to ``EN_BASE`` in ``nts/i18n.py``. Each must be present
     in the assembled ``I18N["EN"]`` dict (which mirrors ``EN_BASE``) and carry
     a non-empty string value.
     """
@@ -1119,14 +1119,14 @@ def test_i18n_self_check_keys_present_ru() -> None:
         f"got {ru['status_bad']!r}"
     )
     # EN back-compat sanity check (status_ok / status_bad are pre-existing keys
-    # that Todo 5 reuses as ✓/✗ glyphs; if either drifts, Todo 5's assumption
-    # breaks BEFORE Todo 5 lands).
+    # that the checklist renderer reuses as ✓/✗ glyphs; if either drifts, the
+    # renderer's assumption breaks).
     en = I18N["EN"]
     assert en["status_ok"] == "OK"
     assert en["status_bad"] == "not OK"
 
 
-# ---- Todo 7: CLI integration (--self-check flag) ---------------------------
+# ---- CLI integration (--self-check flag) ---------------------------
 
 
 _CLI_ENV_BASE: Dict[str, str] = {
@@ -1154,8 +1154,8 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
 def test_cli_help_lists_self_check_flag() -> None:
     """``python -m nts.cli --help`` advertises the new ``--self-check`` flag.
 
-    RED on pre-Todo-7 ``cli.py``: the help message only documents ``--input``
-    and ``--json``. GREEN once Todo 7 adds the ``--self-check`` argument.
+    The help message must advertise the ``--self-check`` flag next to
+    ``--input`` and ``--json``.
     """
     proc = _run_cli("--help")
 
@@ -1211,7 +1211,7 @@ def test_cli_default_input_path_byte_identical(
         "Hypothesis not rejected\n"
     )
     assert proc.stdout == expected, (
-        f"stdout drifted from pre-Todo-7 baseline; "
+        f"stdout drifted from the recorded baseline; "
         f"diff={proc.stdout!r} vs {expected!r}"
     )
 
@@ -1222,7 +1222,7 @@ def test_cli_self_check_missing_expected_exits_2(
 ) -> None:
     """``--self-check`` on a payload without ``expected`` exits with status 2.
 
-    Mirrors the S7 scenario from ``.omo/plans/self-check.md``: a self-check
+    Mirrors the S7 scenario of the self-check plan: a self-check
     payload that contains only the ``input`` key (no ``expected``) must
     surface a clear stderr message and exit with status code 2 (distinct
     from 0 = pass and 1 = fail).
@@ -1248,7 +1248,7 @@ def test_cli_self_check_missing_expected_exits_2(
     )
 
 
-# ---- Todo 8: end-to-end CLI subprocess integration (--self-check happy/mismatch) -
+# ---- end-to-end CLI subprocess integration (--self-check happy/mismatch) --
 
 
 def _build_self_check_payload(
