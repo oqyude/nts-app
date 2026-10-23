@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -72,6 +73,19 @@ def find_vcvars64() -> Optional[Path]:
         if path.is_file():
             return path
     return None
+
+
+def app_version() -> str:
+    """Версия приложения — читается из ``nts/__init__.py`` (единственный источник).
+
+    Файл читается текстом, а не импортом: на этапе сборки зависимости могут быть
+    ещё не установлены, а ``nts`` тянет ``openpyxl``.
+    """
+    source = (REPO_ROOT / "nts" / "__init__.py").read_text(encoding="utf-8")
+    match = re.search(r'__version__\s*=\s*"([^"]+)"', source)
+    if not match:
+        sys.exit("не удалось прочитать __version__ из nts/__init__.py")
+    return match.group(1)
 
 
 def load_msvc_env(vcvars: Path) -> dict[str, str]:
@@ -155,7 +169,7 @@ def nuitka_build(
         "--enable-plugins=tk-inter",
         "--windows-console-mode=disable",
         f"--product-name={settings['product_name']}",
-        "--file-version=0.2.1",
+        f"--file-version={app_version()}",
         "--copyright=Built with Nuitka",
         f"--output-dir={RELEASE_DIR}",
         f"--output-filename={settings['output']}",
