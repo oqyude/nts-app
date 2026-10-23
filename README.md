@@ -78,13 +78,23 @@ Each computed field is compared with `expected` using per-category tolerances
 Exit code: `0` when all match, `1` when any field mismatches, `2` when the input
 file is missing or malformed.
 
-Capture the `expected` block from a real run:
+Capture the `expected` block from a real run — `--json` writes the computed
+result on its own, so the self-check file is assembled from two pieces:
 
 ```bash
-python -m nts.cli --input your_input.json --json expected.json
+# 1) посчитать эталон (обычный режим отчёта + JSON результата)
+python -m nts.cli --input your_input.json --json result.json
+
+# 2) собрать self-check-файл: {"input": <вход>, "expected": <результат>}
+python -c "import json; json.dump({'input': json.load(open('your_input.json')), 'expected': json.load(open('result.json'))}, open('self_check.json','w',encoding='utf-8'), ensure_ascii=False, indent=2)"
+
+# 3) проверить
+python -m nts.cli --self-check self_check.json
 ```
 
-See `examples/default_with_expected.json` for a working demo.
+The `--json` file alone is **not** a self-check file: `--self-check` expects
+the two blocks (`input` and `expected`) at the top level. See
+`examples/default_with_expected.json` for a working demo.
 
 ### Workbook layout (`.xlsx`)
 
