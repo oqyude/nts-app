@@ -1839,3 +1839,110 @@ def test_parse_self_check_xlsx_ignores_dictionary_sheet(tmp_path: Path) -> None:
     bundle = parse_self_check_bundle(path)
     assert bundle.expected["coefficients"]["b0"] == pytest.approx(1.0)
     assert "dictionary" not in bundle.expected
+
+
+# ---- Инварианты формата и словаря ------------------------------------------
+#
+# Три договорённости, которые проверялись вручную и теперь зафиксированы
+# тестами: цвет не влияет на логику, словарь покрывает весь результат,
+# эталонная книга соответствует тому, что пишет писатель.
+
+
+def test_verify_result_does_not_depend_on_cell_fill(
+    tmp_path: Path,
+    examples_dir: Path,
+) -> None:
+    """Заливка ядра — только метка: снятие всех цветов не меняет результат.
+
+    Ядро определяется списком ``CORE_RESULT_KEYS`` и именем листа, а не
+    цветом: код нигде не читает заливку (единственная операция — запись
+    ``ws.cell(...).fill = fill`` при экспорте).
+    """
+    import openpyxl
+    from openpyxl.styles import PatternFill
+
+    from nts.checker import parse_self_check_bundle, verify, write_self_check_xlsx
+    from nts.core import compute, read_input_file
+
+    path = tmp_path / "colored.xlsx"
+    data = read_input_file(examples_dir / "default.json")
+    write_self_check_xlsx(path, data, compute(data), lang="RU")
+
+    bundle = parse_self_check_bundle(path)
+    before = verify(compute(bundle.input_data), bundle.expected, mode=bundle.mode)
+
+    workbook = openpyxl.load_workbook(path)
+    stripped = 0
+    for sheet in workbook.worksheets:
+        for row in sheet.iter_rows():
+            for cell in row:
+                if cell.fill is not None and cell.fill.patternType:
+                    cell.fill = PatternFill()
+                    stripped += 1
+    assert stripped > 0, "в эталонной книге должна быть хотя бы одна заливка"
+    workbook.save(path)
+
+    stripped_bundle = parse_self_check_bundle(path)
+    after = verify(
+        compute(stripped_bundle.input_data),
+        stripped_bundle.expected,
+        mode=stripped_bundle.mode,
+    )
+
+    assert (after.passed, after.failed) == (before.passed, before.failed), (
+        "снятие заливки изменило результат проверки: "
+        f"было {before.passed}/{before.failed}, стало {after.passed}/{after.failed}"
+    )
+    assert after.failed == 0
+
+
+def test_dictionary_covers_every_result_key(examples_dir: Path) -> None:
+    """Каждый ключ, возвращаемый ``compute()``, имеет описание в словаре."""
+    from nts.core import compute, read_input_file
+    from nts.dictionary import UNKNOWN_DESCRIPTION, describe
+
+    result = compute(read_input_file(examples_dir / "default.json"))
+
+    keys: list[str] = []
+    for name, value in result.items():
+        if isinstance(value, dict):
+            keys.extend(f"{name}.{sub}" for sub in value)
+        else:
+            keys.append(name)
+
+    missing = [key for key in keys if describe(key, "RU") == UNKNOWN_DESCRIPTION]
+    assert not missing, f"ключи без описания: {missing}"
+
+
+def test_reference_workbook_matches_writer(
+    tmp_path: Path,
+    examples_dir: Path,
+) -> None:
+    """Эталонная книга в ``examples/`` совпадает с выводом писателя.
+
+    Книга — эталон для проверок; если писатель изменился, эталон нужно
+    перегенерировать, а не чинить руками.
+    """
+    import openpyxl
+
+    from nts.checker import write_self_check_xlsx
+    from nts.core import compute, read_input_file
+
+    reference = examples_dir / "default_result.xlsx"
+    if not reference.exists():
+        pytest.skip("эталонная книга отсутствует")
+
+    data = read_input_file(examples_dir / "default.json")
+    fresh = tmp_path / "fresh.xlsx"
+    write_self_check_xlsx(fresh, data, compute(data), lang="RU")
+
+    def snapshot(path: Path) -> Dict[str, List[tuple]]:
+        workbook = openpyxl.load_workbook(path, data_only=True)
+        return {
+            sheet.title: [tuple(row) for row in sheet.iter_rows(values_only=True)]
+            for sheet in workbook.worksheets
+        }
+
+    assert snapshot(fresh) == snapshot(reference), (
+        "эталонная книга разошлась с писателем — перегенерируйте examples/default_result.xlsx"
+    )
