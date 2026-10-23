@@ -3,59 +3,91 @@
 ## Session Summary
 
 **Session:** `38dd3237-c3d7-4ade-adc7-d81bc68ec967`
-**Goal:** самопроверка (self-check) с разделением «ядро / расширенное», опциональным листом `extended` и человекочитаемым словарём переменных.
-**Completed:** 7 задач (T0–T6), все архивированы
-**Pending:** 0
-**Approved requests:** `req-self-check-core-extended` → `.agent/requests/archive/`
+**Date:** 2026-10-23
+**Goal:** снять выявленный техдолг репозитория: дрейф между документацией и кодом, дубли и мусор, монолиты, хрупкие решения, пробелы в тестах.
+**Current phase:** EXECUTION по задачам T7–T24 (`.agent/tasks/manifest.md`)
+**Pending:** см. §«Что дальше» — часть пунктов требует решения владельца.
+
+## Точка входа
+
+1. **Список задач и их приоритеты** — `.agent/tasks/manifest.md` (T7–T24: ID, суть, где, тип, риск, польза, «сразу / нужна страховка»).
+2. **Актуальный слепок проекта** — `.agent/context/project-state.md` (архитектура, формат книги, режимы, словарь, таблица исправлений, гейты верификации, что дальше).
+3. **Итоговый отчёт аудита** — `%TEMP%/opencode/nts-app-techdebt-plan.md` (вне репозитория; перенос в репозиторий — задача T24, ждёт решения).
+4. **Правила** — `.agent/rules/project-rules.md` (математика по `.temp/расчет.xlsx`, запрет CI/CD, запрет хардкода критериев, гейты верификации).
 
 ## Project State
 
-Python 3.14 / Tkinter приложение для расчёта НТС (Методичка §3 + Excel-референс `.temp/расчет.xlsx`).
+Python 3.14 / Tkinter приложение для расчёта НТС (Методичка §3, выровнено по Excel-референсу `.temp/расчет.xlsx`).
 
 ```
-nts/ core.py (вычисления)  checker.py (самопроверка)  dictionary.py (описания переменных)
+nts/ core.py (вычисления)  checker.py→пакет checker/ (самопроверка)  dictionary.py (описания)
      gui.py (основной клиент)  reverse_gui.py (чек-лист)  cli.py  i18n.py
-tests/ test_core.py (16)  test_checker.py (63) → 79 passed
+tests/ test_core.py (16)  test_checker.py (63) + новые файлы по T14/T15
+examples/ входы + эталонная книга (core/extended/dictionary)
 ```
 
-Ключевые решения текущего состояния:
+Ключевые решения (не менять без пересмотра):
 
-- **Ядро проверки** — 10 ключей (`f_value`, `coefficients.b0..b2`, `coefficients_v.b0..b2`, `t_tests.t0..t2`), они лежат на листе `result` (жёлтая заливка — только метка).
-- **`extended`** — опциональный лист с остальными 16 ключами; его наличие переводит проверку в расширенный режим (54 поля), отсутствие — в упрощённый (только 10 основных).
-- **Цвет в логике не участвует**: ни одна строка кода не читает заливку; эксперимент «снять все 10 заливок» → 54/54 без изменений.
-- **Словарь** (`nts/dictionary.py`, RU/EN, 45 записей) → колонка `description` в Excel, лист `dictionary`, колонка «Описание» в reverse-GUI, приглушённая подпись под значением в основном GUI.
+- **Ядро проверки** — 10 ключей (`f_value`, `coefficients.b0..b2`, `coefficients_v.b0..b2`, `t_tests.t0..t2`) на листе `result`; остальные 16 — на опциональном листе `extended`.
+- **Режимы**: `MODE_SIMPLIFIED` (только ядро, 10 проверок) / `MODE_FULL` (все известные поля, 54 проверки). Режим выводится из файла.
+- **Цвет в логике не участвует**: ядро определяется `CORE_RESULT_KEYS` и именем листа; заливка — только метка (единственная запись — `nts/checker.py:1241`, чтений нет).
+- **Словарь** (`nts/dictionary.py`, RU/EN, 45 записей) → колонка `description` в Excel, лист `dictionary`, «Описание» в чек-листе reverse-GUI, подпись под значением в основном GUI.
 
-## Что сделано за цикл самопроверки (T6)
+## Правила этой сессии (обязательны)
 
-| Что | Где |
+- Каждый пункт — **отдельный, независимо откатываемый коммит**; порядок: сначала «безопасно сейчас» (дрейф в комментариях, дубли, мусор, `.gitignore`), затем остальное.
+- Перед правкой **функционального кода** — написать тест, который **проходит сейчас** и должен вести себя так же после правки. Если поведение менять нельзя — коммит не делать, оставить статус `blocked`.
+- **Не трогать**: чужие репозитории, секреты, `.venv`, `.local`, данные моделей, файлы под `.agent/` кроме `.agent/tasks/manifest.md`, `.agent/context/project-state.md`, `.agent/handoff-summary.md`.
+- **Не менять** без отдельного согласования: публичное поведение CLI, формат конфигурации, формат файлов состояния.
+
+## Что сделано в этом цикле
+
+| Задача | Коммит | Суть |
+|---|---|---|
+| T7 | `refactor: описательные заголовки вместо ссылок на план` | 35 комментариев «Todo N» → по смыслу; ссылок на `.omo/plans/self-check.md` не осталось |
+| T8 | `docs: README — рабочий рецепт self-check-файла` | инструкция `--json` больше не даёт файл, который `--self-check` отвергает |
+| T9 | `chore: отслеживать baseline-отчёт тестов` | исключение в `.gitignore` + сам отчёт под версией |
+| T10 | `test: инварианты (цвет / словарь / эталон)` | 3 теста, фиксирующие договорённости |
+| T11 | `chore: удалить дубликат примера` | побайтово идентичный `fail_intentional_mismatch.xlsx` удалён |
+| T12 | `test+refactor: единый источник версии` | `--file-version` Nuitka берётся из `nts.__version__` |
+| T13 | `refactor: nts/checker.py → пакет nts/checker/` | монолит 1322 LOC разложен по `model/compare/loader/xlsx_io/report`; публичный API `nts.checker` сохранён |
+| T14 | `test: покрытие nts/gui.py` | тесты на рендер описаний и экспорт XLSX |
+| T15 | `test: покрытие build.py` | тесты на выбор vcvars64/cl и разбор аргументов |
+
+> Точные SHA — в `git log --oneline` ветки `dev`.
+
+## Что заблокировано и почему
+
+| Задача | Причина |
 |---|---|
-| Разделение `result`/`extended` + жёлтое ядро | `nts/checker.py` (`CORE_RESULT_KEYS`, `write_self_check_xlsx`) |
-| Опциональный `extended` + слияние в expected | `nts/checker.py` (`_load_xlsx_bundle`, `_merge_expected`) |
-| Режимы `MODE_SIMPLIFIED` / `MODE_FULL` | `nts/checker.py` (`verify`, `_select_core_expected`) |
-| Упрощённый режим + авто-переключение + селектор режима | `nts/reverse_gui.py` |
-| Словарь описаний | `nts/dictionary.py` (новый) |
-| Описания в панели результата основного GUI | `nts/gui.py` (`_place_value`, `CAPTION_COLOR`) |
-| Экспорт XLSX: единый писатель, метод вернулся в класс | `nts/gui.py` → `nts.checker.write_self_check_xlsx` |
-| UTF-8 stdout/stderr в CLI | `nts/cli.py` (`_force_utf8_output`) |
+| T17, T18 | файлы под `.agent/` вне разрешённого списка сессии (`.agent/rules/project-rules.md`, `.agent/session-summary.md`) |
+| T19 | `pyproject.toml` — новая конфигурация проекта: формат конфигурации меняется только с явного согласования |
+| T20 | судьба вендоренного `.agent/src/` — решение владельца (35 файлов / 3390 LOC, 16 ссылок в `AGENTS.md`) |
+| T21 | `docs/` + `tools/` в корне — ⚠ `build.py:40,163` считает `REPO_ROOT` от своего места и включает `examples=` в Nuitka: перенос ломает сборку, нужен смоук `build.py --help` и решение владельца о переносе |
+| T22 | эталон `.temp/расчет.xlsx` под git — перед вендорингом нужно открыть файл целиком и проверить содержимое на персональные данные |
+| T23 | теги `v0.0.x` и `release.yml:11` — правка CI/CD запрещена правилами проекта |
+| T24 | сводный отчёт аудита — оставить вне репозитория или перенести в `.agent/context/` |
 
-## Next Steps
+## Требует решения владельца
 
-Активных задач нет. Если продолжить — кандидаты из `.agent/roadmap/sources.md`:
-1. JSON-режим самопроверки → упрощённый по умолчанию.
-2. CLI-чек-лист с описаниями (`print_checklist(lang=...)` уже умеет).
-3. CI/CD и `build.ps1 --lto=yes` — только по явному запросу.
+1. **T16** — раскладка `examples/` по `inputs/ expected/ qa/`: перенос файлов, затронет ссылки в README/тестах/коде. Нужен ли перенос вообще (или достаточно README-описания в одной папке)?
+2. **T19** — вводить ли `pyproject.toml` (смена формата конфигурации) или оставить `requirements*.txt` и ограничиться пинами?
+3. **T21** — переносить ли `build.py` в `tools/` (ломает пути сборки) или оставить в корне?
+4. **T20** — оставляем `.agent/src/` в репозитории (документировать как vendored) или выносим?
+5. **T22** — вендорить ли эталон Excel (нужна проверка содержимого)?
+6. **T24** — сохранять ли сводный отчёт аудита в репозитории?
+7. **T23** — теги: ставить `v0.2.1`? (release-воркфлоу при этом всё равно не сработает без правки CI, которая запрещена.)
 
 ## Как проверить
 
 ```bash
 cd S:/Git/nts-app
-python -m pytest -q                                   # → 79 passed
-
-python -m nts.cli --input examples/default_result.xlsx --self-check       # → 54 passed (расширенный)
-python -m nts.cli --input examples/default_result_core.xlsx --self-check  # → 10 passed (упрощённый)
-python -m nts.cli --input examples/default_with_expected.json --self-check # → 54 passed (JSON)
-
-python main.py            # основной GUI (описания под значениями)
+python -m pytest -q                                   # гейт: exit 0
+python -m nts.cli --input examples/default_result.xlsx --self-check       # 54 passed (полный)
+python -m nts.cli --input examples/default_result_core.xlsx --self-check  # 10 passed (упрощённый)
+python -m nts.cli --input examples/default_with_expected.json --self-check # 54 passed (JSON)
+python -m nts.cli --input examples/default.json                          # отчёт, байт-в-байт как baseline
+python main.py            # основной GUI
 python main_reverse.py    # reverse GUI (режимы + колонка «Описание»)
 ```
 
@@ -63,14 +95,12 @@ python main_reverse.py    # reverse GUI (режимы + колонка «Опи�
 
 | Файл | Назначение |
 |---|---|
-| `.agent/context/project-state.md` | актуальный слепок проекта |
-| `.agent/tasks/manifest.json` | манифест (все задачи archived) |
-| `.agent/archive/tasks/T0..T6.json` | полные описания задач |
-| `.agent/archive/index.json` | индекс архива |
-| `.agent/requests/archive/req-self-check-core-extended.json` | одобренный request |
-| `.agent/roadmap/sources.md` | источники задач и кандидаты следующего цикла |
-| `.agent/context/baseline-test-report.log` | `pytest -q` output (79 passed) |
-| `.agent/context/calculation-diff.md` | Excel ↔ Методичка §3 расхождения по формулам |
+| `.agent/tasks/manifest.md` | задачи T7–T24 текущего цикла |
+| `.agent/context/project-state.md` | слепок проекта |
+| `.agent/context/baseline-test-report.log` | `pytest -q` output (отслеживается с T9) |
+| `.agent/context/calculation-diff.md` | Excel ↔ Методичка §3 |
+| `.agent/rules/project-rules.md` | правила проекта (математика, стиль, гейты) |
+| `.agent/archive/tasks/T0..T6.json` | архив прошлого цикла |
 | `examples/default_result.xlsx` | эталонная книга (ядро + extended + dictionary) |
 | `examples/default_result_core.xlsx` | тот же эталон без `extended` (упрощённый режим) |
 
@@ -80,7 +110,4 @@ python main_reverse.py    # reverse GUI (режимы + колонка «Опи�
 - Применять t-тест к кодированным `b` — по Excel-референсу t-тест идёт по натуральным `b_v`.
 - Хардкодить `t_cr = 2.306` / `F_crit = 239` / `G_crit = 0.7679` — это входные параметры.
 - Менять CI/CD — пользователь явно не просил.
-
-## Незакоммиченное
-
-Дерево было грязным до начала сессии (правки прошлых сессий по self-check). Всё это вошло в коммит `dev` вместе с текущей работой. Служебный каталог `.metaagent-director/` (артефакт оркестратора) намеренно не коммитится.
+- Трогать `.temp/расчет.xlsx` (эталон) без сознательного решения и проверки содержимого.
