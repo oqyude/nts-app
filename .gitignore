@@ -4,6 +4,9 @@ __pycache__/
 *.pyd
 *.pyo
 *.log
+# ... кроме отчёта о прогоне тестов: на него ссылаются гейты верификации
+# в .agent/context/project-state.md и .agent/handoff-summary.md
+!/.agent/context/*.log
 
 # Envs
 .venv/
