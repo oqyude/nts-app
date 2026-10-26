@@ -10,7 +10,7 @@
   по ключу (соответственно ``row`` и ``(delta1, delta2)``).
 
 Режимы: :data:`MODE_FULL` требует полноты эталона, :data:`MODE_SIMPLIFIED`
-сравнивает только ядро.
+сравнивает ядро и, если он есть в эталоне, блок Граббса.
 """
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from .model import (
     CORE_RESULT_KEYS,
     MODE_FULL,
     MODE_SIMPLIFIED,
+    SIMPLIFIED_EXTRA_KEYS,
     CheckEntry,
     CheckResult,
     Tolerance,
@@ -603,6 +604,11 @@ def _select_core_expected(expected: dict[str, Any]) -> dict[str, Any]:
     result is a nested dict shaped like ``expected`` again. Groups keep only
     the core leaves — ``coefficients`` keeps ``b0``/``b1``/``b2`` and nothing
     else.
+
+    :data:`SIMPLIFIED_EXTRA_KEYS` (the Grubbs block) are carried over when the
+    reference file provides them: a core-only workbook still ships a
+    ``grubbs`` sheet, and the criterion belongs to the core method even though
+    it is not one of the yellow-marked scalar cells.
     """
     out: dict[str, Any] = {}
     for path in CORE_RESULT_KEYS:
@@ -616,6 +622,9 @@ def _select_core_expected(expected: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(group, dict) or leaf not in group:
             continue
         out.setdefault(group_name, {})[leaf] = group[leaf]
+    for path in SIMPLIFIED_EXTRA_KEYS:
+        if path in expected:
+            out[path] = expected[path]
     return out
 
 
@@ -639,10 +648,11 @@ def verify(
 
     * :data:`MODE_FULL` (default) — the reference must cover every field the
       comparison knows about; a field missing from ``expected`` is a failure.
-    * :data:`MODE_SIMPLIFIED` — only the core keys (:data:`CORE_RESULT_KEYS`)
-      are compared. The optional fields (extended keys, G-tests, per-row
-      output) are skipped, so a reference file without them still verifies the
-      model.
+    * :data:`MODE_SIMPLIFIED` — the core keys (:data:`CORE_RESULT_KEYS`) are
+      compared, plus the Grubbs block (:data:`SIMPLIFIED_EXTRA_KEYS`) when the
+      reference provides it. The remaining optional fields (extended keys,
+      per-row output) are skipped, so a reference file without them still
+      verifies the model.
 
     Raises ``ValueError("expected must not be empty")`` when ``expected`` is an
     empty mapping. Unknown keys inside ``expected`` are silently ignored.

@@ -6,21 +6,26 @@ import sys
 from pathlib import Path
 
 from .core import ComputeResult, InputData, compute, read_input_file
+from .i18n import DEFAULT_LANGUAGE, I18N, LANGUAGES, localize_check_value, normalize_lang
 
 
-def print_report(result: ComputeResult) -> None:
+def print_report(result: ComputeResult, lang: str = DEFAULT_LANGUAGE) -> None:
+    table = I18N[normalize_lang(lang)]
     t = result["t_tests"]
     print(result["equation"])
     print("")
-    print("t-tests:")
+    print(table["cli_report_t"])
     for label, key, sign_key in (("t_0", "t0", "sign_b0"), ("t_1", "t1", "sign_b1"), ("t_2", "t2", "sign_b2")):
         print(f"  {label}: t={t[key]:.4f} sign={t[sign_key]}")
     print("")
-    print("G-tests:")
+    print(table["cli_report_g"])
     for row in result["g_tests"]:
-        print(f"  row {row['row']}: G={row['g']:.4f} ({row['ok']})")
+        status = localize_check_value("g_tests.row.ok", row["ok"], lang)
+        print("  " + table["cli_report_row"].format(
+            row=row["row"], g=f"{row['g']:.4f}", status=status,
+        ))
     print("")
-    print("Output:")
+    print(table["cli_report_output"])
     headers = ("y_avg", "delta1", "delta2", "y_pred", "y_avg-y", "(y_avg-y)^2")
     print("  " + " | ".join(headers))
     for r in result["output_rows"]:
@@ -30,9 +35,9 @@ def print_report(result: ComputeResult) -> None:
         )
         print("  " + " | ".join(cells))
     print("")
-    print(f"F_avg={result['f_avg']:.6g}")
-    print(f"F_value={result['f_value']:.6g}")
-    print(result["f_result"])
+    print(f"{table['f_avg']}={result['f_avg']:.6g}")
+    print(f"{table['f_value']}={result['f_value']:.6g}")
+    print(localize_check_value("f_result", result["f_result"], lang))
 
 
 def _force_utf8_output() -> None:
@@ -73,7 +78,15 @@ def main() -> None:
         help="Run self-check mode: input JSON must be {\"input\": {...}, \"expected\": {...}}.",
     )
     parser.add_argument("--json", dest="json_path", help="Write result JSON to this path.")
+    parser.add_argument(
+        "--lang",
+        dest="lang",
+        choices=LANGUAGES,
+        default=DEFAULT_LANGUAGE,
+        help=f"Report language (default: {DEFAULT_LANGUAGE}).",
+    )
     args = parser.parse_args()
+    lang = normalize_lang(args.lang)
 
     input_path_str = args.input_path or args.path
     if input_path_str is None:
@@ -85,11 +98,11 @@ def main() -> None:
         try:
             bundle = parse_self_check_bundle(Path(args.input_path))
         except (ValueError, FileNotFoundError) as e:
-            print(f"error: {e}", file=sys.stderr)
+            print(f"{I18N[lang]['cli_error']} {e}", file=sys.stderr)
             sys.exit(2)
         actual = compute(bundle.input_data)
         result = verify(actual, bundle.expected, mode=bundle.mode)
-        print_checklist(result)
+        print_checklist(result, lang=lang)
         sys.exit(0 if result.failed == 0 else 1)
         return
 
@@ -99,7 +112,7 @@ def main() -> None:
 
     data: InputData = read_input_file(path)
     result = compute(data)
-    print_report(result)
+    print_report(result, lang=lang)
 
     if args.json_path:
         json_path = Path(args.json_path)

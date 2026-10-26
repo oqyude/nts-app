@@ -96,6 +96,20 @@ The `--json` file alone is **not** a self-check file: `--self-check` expects
 the two blocks (`input` and `expected`) at the top level. See
 `examples/default_with_expected.json` for a working demo.
 
+The CLI report is Russian by default (`DEFAULT_LANGUAGE = "RU"`): the hypothesis
+verdict, the Grubbs/G-test statuses, the section headings and the checklist
+labels are localized. Pass `--lang EN` to get the English report:
+
+```bash
+python -m nts.cli --input examples/default.json --lang EN
+python -m nts.cli --self-check examples/default_with_expected.json --lang EN
+```
+
+Internally the result keeps language-neutral values (`f_result =
+"Hypothesis not rejected"`, `f_result_code = "not_rejected"`, G-test `ok =
+"OK"`), so a workbook or JSON file can be verified regardless of the UI
+language.
+
 ### Workbook layout (`.xlsx`)
 
 A self-check workbook is made of these sheets:
@@ -116,14 +130,17 @@ the regression coefficients and the Student t-values.
 
 The `extended` sheet is **optional** and decides the verification mode:
 
-- **without** it — *simplified mode*: only the core fields are compared and
-  reported (`examples/default_result_core.xlsx`, 10 checks);
+- **without** it — *simplified mode*: the core fields are compared and
+  reported, plus the Grubbs block when the workbook carries a `grubbs` sheet
+  (`examples/default_result_core.xlsx`: 10 core + 8 Grubbs checks = 18);
 - **with** it — *extended mode*: the workbook declares full coverage, so every
   field the verifier knows about must be present and must match (54 checks).
 
 Both modes exit `0` when everything checked matches. The writer
 (`nts.checker.write_self_check_xlsx`, also used by the GUI's *Export to
-Excel*) emits the core/extended split and marks the core cells yellow.
+Excel*) emits the core/extended split and marks the core cells yellow. The GUI
+export additionally localizes the human-facing verdict/status cells; the
+reader accepts either form, so the workbook stays interchangeable.
 
 ### Variable descriptions
 
@@ -143,7 +160,9 @@ It verifies in the **simplified** mode by default and switches to the
 **extended** mode automatically when the loaded workbook carries an `extended`
 sheet. The *Mode* selector overrides this: *Auto (by file)*, *Simplified
 (main fields)*, *Extended (all fields)*. The current mode is shown next to the
-summary line.
+summary line. The simplified mode includes the Grubbs block when the workbook
+carries a `grubbs` sheet, so a core-only reference still reports the outlier
+criterion; the per-row `output_rows` stay extended-only.
 
 JSON payloads always carry a complete `expected` block, so they are verified
 in the extended mode.
