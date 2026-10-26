@@ -15,7 +15,12 @@ from typing import Any, Dict, List, Optional, cast
 
 from ..core import ComputeResult, InputData, _parse_input_data
 from ..dictionary import DESCRIPTIONS, describe
-from ..i18n import DEFAULT_LANGUAGE, normalize_lang
+from ..i18n import (
+    DEFAULT_LANGUAGE,
+    canonical_check_value,
+    localize_check_value,
+    normalize_lang,
+)
 from .model import (
     CORE_FILL_RGB,
     CORE_RESULT_KEYS,
@@ -152,17 +157,21 @@ def _set_dotted(target: Dict[str, Any], path: str, value: Any) -> None:
     ``target[path]``. Numeric cells are coerced to ``float``; the criterion
     keys (``g_crit``, ``t_crit``, ``f_crit``) and the discrete string fields
     (``equation``, ``f_result_code``, ``f_result``, ``t_tests.sign_*``) keep
-    their native type. Booleans (rare) are kept as-is.
+    their native type. Booleans (rare) are kept as-is. A localized ``f_result``
+    verdict is mapped back to its canonical English form.
     """
     parts = path.split(".")
+    value = _coerce_scalar(value)
+    if path == "f_result":
+        value = canonical_check_value(path, value)
     if len(parts) == 1:
-        target[parts[0]] = _coerce_scalar(value)
+        target[parts[0]] = value
         return
     group = parts[0]
     sub_key = parts[1]
     if group not in target or not isinstance(target.get(group), dict):
         target[group] = {}
-    target[group][sub_key] = _coerce_scalar(value)
+    target[group][sub_key] = value
 
 
 def _coerce_scalar(value: Any) -> Any:
@@ -265,25 +274,31 @@ def load_xlsx_bundle(path: Path) -> SelfCheckBundle:
 
     if "grubbs" in wb.sheetnames:
         grubbs_records = _parse_xlsx_sheet_to_dict(_read_xlsx_sheet_rows(wb, "grubbs"))
-        expected["g_tests"] = [
-            {"row": int(float(rec["row"])), "g": float(rec["G"]), "ok": str(rec["ok"])}
-            for rec in grubbs_records
-            if rec.get("row") is not None
-        ]
+        if grubbs_records:
+            expected["g_tests"] = [
+                {
+                    "row": int(float(rec["row"])),
+                    "g": float(rec["G"]),
+                    "ok": canonical_check_value("g_tests.row.ok", str(rec["ok"])),
+                }
+                for rec in grubbs_records
+                if rec.get("row") is not None
+            ]
 
     if "output_rows" in wb.sheetnames:
         out_records = _parse_xlsx_sheet_to_dict(_read_xlsx_sheet_rows(wb, "output_rows"))
-        expected["output_rows"] = [
-            {
-                "delta1": float(rec["delta1"]),
-                "delta2": float(rec["delta2"]),
-                "y_avg": float(rec["y_avg"]),
-                "y_pred": float(rec["y_pred"]),
-                "y_avg_minus_y": float(rec["y_avg_minus_y"]),
-                "y_avg_minus_y_sq": float(rec["y_avg_minus_y_sq"]),
-            }
-            for rec in out_records
-        ]
+        if out_records:
+            expected["output_rows"] = [
+                {
+                    "delta1": float(rec["delta1"]),
+                    "delta2": float(rec["delta2"]),
+                    "y_avg": float(rec["y_avg"]),
+                    "y_pred": float(rec["y_pred"]),
+                    "y_avg_minus_y": float(rec["y_avg_minus_y"]),
+                    "y_avg_minus_y_sq": float(rec["y_avg_minus_y_sq"]),
+                }
+                for rec in out_records
+            ]
 
     return SelfCheckBundle(
         input_data=input_data,
@@ -309,6 +324,7 @@ def write_self_check_xlsx(
     result: ComputeResult,
     *,
     lang: str = DEFAULT_LANGUAGE,
+    localize_values: bool = False,
 ) -> Path:
     """Write a self-check workbook in the same layout :func:`parse_self_check_xlsx` reads.
 
@@ -325,6 +341,11 @@ def write_self_check_xlsx(
     meaning of the variable (see :mod:`nts.dictionary`), written in ``lang``.
     The ``dictionary`` sheet lists every variable of the workbook — result
     keys and the column names of the other sheets — with its description.
+    Human-facing discrete values (the Fisher verdict and the Grubbs status)
+    are written in ``lang`` when ``localize_values`` is true; the reader maps
+    them back to the canonical English form, so a Russian report stays
+    interchangeable with an English one. The default (``False``) keeps the
+    canonical values, which is what a reference workbook needs.
     """
     openpyxl = _require_openpyxl()
     wb = openpyxl.Workbook()
@@ -384,14 +405,24 @@ def write_self_check_xlsx(
     for key, value in rows:
         is_core = key in CORE_RESULT_KEYS
         ws = ws_res if is_core else ws_ext
-        ws.append([key, value, describe(key, lang)])
+        displayed = (
+            localize_check_value(key, value, lang)
+            if localize_values and key == "f_result"
+            else value
+        )
+        ws.append([key, displayed, describe(key, lang)])
         if is_core:
             ws.cell(row=ws.max_row, column=2).fill = fill
 
     ws_g = wb.create_sheet("grubbs")
     ws_g.append(["row", "G", "ok"])
     for g in result["g_tests"]:
-        ws_g.append([g["row"], g["g"], g["ok"]])
+        status = (
+            localize_check_value("g_tests.row.ok", g["ok"], lang)
+            if localize_values
+            else g["ok"]
+        )
+        ws_g.append([g["row"], g["g"], status])
 
     ws_o = wb.create_sheet("output_rows")
     ws_o.append([

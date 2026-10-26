@@ -28,8 +28,9 @@
 
 * :data:`MODE_FULL` — эталон должен покрывать все известные поля, отсутствие
   поля считается провалом;
-* :data:`MODE_SIMPLIFIED` — сравнивается только ядро
-  (:data:`CORE_RESULT_KEYS`), опциональные поля пропускаются.
+* :data:`MODE_SIMPLIFIED` — сравнивается ядро
+  (:data:`CORE_RESULT_KEYS`) и, если он есть в эталоне, блок Граббса
+  (:data:`SIMPLIFIED_EXTRA_KEYS`); остальные опциональные поля пропускаются.
 
 Цвет в формате книги — только метка: ядро определяется
 :data:`CORE_RESULT_KEYS` и именем листа, заливка нигде не читается.
@@ -46,6 +47,7 @@ from .model import (
     EXTENDED_SHEET_NAME,
     MODE_FULL,
     MODE_SIMPLIFIED,
+    SIMPLIFIED_EXTRA_KEYS,
     CheckEntry,
     CheckResult,
     SelfCheckBundle,
@@ -62,6 +64,7 @@ __all__ = [
     "EXTENDED_SHEET_NAME",
     "MODE_FULL",
     "MODE_SIMPLIFIED",
+    "SIMPLIFIED_EXTRA_KEYS",
     "CheckEntry",
     "CheckResult",
     "SelfCheckBundle",

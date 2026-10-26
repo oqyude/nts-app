@@ -1054,6 +1054,84 @@ def test_print_checklist_includes_missing(
     assert "missing" in captured.out
 
 
+def test_print_checklist_localizes_report_and_values(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``lang='RU'`` translates the title, labels, verdicts and notes."""
+    entries = [
+        CheckEntry(
+            name="f_result",
+            passed=True,
+            actual="Hypothesis not rejected",
+            expected="Hypothesis not rejected",
+            diff=None,
+            message="",
+        ),
+        CheckEntry(
+            name="g_tests[row=1].ok",
+            passed=False,
+            actual="not OK",
+            expected="OK",
+            diff=None,
+            message="discrete mismatch: 'not OK' != 'OK'",
+        ),
+        CheckEntry(
+            name="coefficients.b0",
+            passed=False,
+            actual=1.5,
+            expected=1.0,
+            diff=0.5,
+            message="numeric mismatch: |1.5 - 1.0| = 0.5 > abs_tol=0.001",
+        ),
+    ]
+    result = CheckResult(passed=1, failed=2, entries=entries)
+
+    print_checklist(result, lang="RU")
+    out = capsys.readouterr().out
+
+    assert "Самопроверка" in out
+    assert "Гипотеза не отвергается" in out
+    assert "не OK" in out
+    assert "расхождение значений" in out
+    assert "числовое расхождение" in out
+    assert "факт=" in out and "эталон=" in out
+    assert "1 пройдено, 2 провалено" in out
+    assert "Hypothesis not rejected" not in out
+    assert "numeric mismatch" not in out
+
+
+def test_localize_check_value_and_message() -> None:
+    """Canonical values and note prefixes map to RU without touching the tail."""
+    from nts.i18n import localize_check_value, translate_message
+
+    assert localize_check_value("f_result", "Hypothesis rejected", "RU") == (
+        "Гипотеза отвергается"
+    )
+    assert localize_check_value("f_result_code", "not_rejected", "RU") == (
+        "не отвергается"
+    )
+    assert localize_check_value("g_tests[row=2].ok", "not OK", "RU") == "не OK"
+    # Unknown values and non-strings pass through unchanged.
+    assert localize_check_value("coefficients.b0", 1.5, "RU") == 1.5
+    assert localize_check_value("f_result", "custom text", "RU") == "custom text"
+
+    raw = "missing in expected: actual='x', expected=None"
+    assert translate_message(raw, "RU") == (
+        "отсутствует в эталоне: actual='x', expected=None"
+    )
+    assert translate_message(raw, "EN") == raw
+    assert translate_message("custom note", "RU") == "custom note"
+
+    from nts.i18n import canonical_check_value
+
+    assert canonical_check_value("f_result", "Гипотеза не отвергается") == (
+        "Hypothesis not rejected"
+    )
+    assert canonical_check_value("f_result_code", "отвергается") == "rejected"
+    assert canonical_check_value("g_tests[row=1].ok", "не OK") == "not OK"
+    assert canonical_check_value("f_result", "custom text") == "custom text"
+
+
 # ---- i18n self-check keys present in EN + RU ------------------------
 
 # Names of the 5 self-check i18n keys (EN_BASE + RU_OVERRIDES).
@@ -1176,7 +1254,9 @@ def test_cli_default_input_path_byte_identical(
     Asserts the exact stdout byte-string captured in
     ``.omo/evidence/baseline_pre_change.txt``. Any edit to ``nts/cli.py`` that
     disturbs the ``--input`` path — even a trailing newline or whitespace
-    change — must trip this test.
+    change — must trip this test. The default report language is Russian
+    (``DEFAULT_LANGUAGE``); ``--lang EN`` keeps the historical English wording
+    (see :func:`test_cli_lang_en_keeps_english_report`).
     """
     input_path = examples_dir / "default.json"
     proc = _run_cli("--input", str(input_path))
@@ -1185,6 +1265,44 @@ def test_cli_default_input_path_byte_identical(
         f"baseline --input run should exit 0, got {proc.returncode!r}; "
         f"stderr={proc.stderr!r}"
     )
+    expected = (
+        "Y = 1063.5 + 30.167*δ1 - 67.5*δ2\n"
+        "\n"
+        "t-критерии:\n"
+        "  t_0: t=39.7300 sign=+\n"
+        "  t_1: t=3.2700 sign=+\n"
+        "  t_2: t=6.5740 sign=+\n"
+        "\n"
+        "Критерий Граббса:\n"
+        "  Опыт 1: G=0.6250 (OK)\n"
+        "  Опыт 2: G=0.6670 (OK)\n"
+        "  Опыт 3: G=0.5760 (OK)\n"
+        "  Опыт 4: G=0.5610 (OK)\n"
+        "\n"
+        "Поопытный вывод:\n"
+        "  y_avg | delta1 | delta2 | y_pred | y_avg-y | (y_avg-y)^2\n"
+        "  1122.67 | -1 | -1 | 1100.83 | 21.8333 | 476.694\n"
+        "  944 | -1 | 1 | 965.833 | -21.8333 | 476.694\n"
+        "  1139.33 | 1 | -1 | 1161.17 | -21.8333 | 476.694\n"
+        "  1048 | 1 | 1 | 1026.17 | 21.8333 | 476.694\n"
+        "\n"
+        "F_ср=476.694\n"
+        "F_знач=17.655\n"
+        "Гипотеза не отвергается\n"
+    )
+    assert proc.stdout == expected, (
+        f"stdout drifted from the recorded baseline; "
+        f"diff={proc.stdout!r} vs {expected!r}"
+    )
+
+
+def test_cli_lang_en_keeps_english_report(
+    examples_dir: Path,
+) -> None:
+    """``--lang EN`` reproduces the historical English report verbatim."""
+    proc = _run_cli("--input", str(examples_dir / "default.json"), "--lang", "EN")
+
+    assert proc.returncode == 0
     expected = (
         "Y = 1063.5 + 30.167*δ1 - 67.5*δ2\n"
         "\n"
@@ -1210,10 +1328,7 @@ def test_cli_default_input_path_byte_identical(
         "F_value=17.655\n"
         "Hypothesis not rejected\n"
     )
-    assert proc.stdout == expected, (
-        f"stdout drifted from the recorded baseline; "
-        f"diff={proc.stdout!r} vs {expected!r}"
-    )
+    assert proc.stdout == expected
 
 
 def test_cli_self_check_missing_expected_exits_2(
@@ -1344,14 +1459,15 @@ def test_cli_self_check_subprocess_happy(tmp_path: Path) -> None:
     ``f_crit`` literals) and invokes the CLI as a subprocess. The expected
     payload mirrors what :func:`nts.core.compute` returns for the same input,
     so the verifier should see zero diffs and the CLI should exit 0 with the
-    human-readable checklist ending in ``"<N> passed, 0 failed"``.
+    human-readable checklist ending in ``"<N> пройдено, 0 провалено"``.
 
     Stdout must contain both the Unicode ``✓`` (rendered by default) and
-    the literal ``Self-check`` header printed by
-    :func:`nts.checker.print_checklist`. The equation line includes ``δ1`` /
-    ``δ2`` so ``PYTHONIOENCODING=utf-8`` is required to keep the parent's
-    text decoder from raising on byte 0xCE etc. — this is exercised (not
-    stubbed) via :func:`_run_cli`.
+    the literal ``Самопроверка`` header printed by
+    :func:`nts.checker.print_checklist` (the CLI defaults to the Russian
+    report; ``--lang EN`` is covered separately). The equation line includes
+    ``δ1`` / ``δ2`` so ``PYTHONIOENCODING=utf-8`` is required to keep the
+    parent's text decoder from raising on byte 0xCE etc. — this is exercised
+    (not stubbed) via :func:`_run_cli`.
     """
     payload = _build_self_check_payload()
     path = tmp_path / "self_check_ok.json"
@@ -1363,11 +1479,11 @@ def test_cli_self_check_subprocess_happy(tmp_path: Path) -> None:
         f"--self-check on a valid payload must exit 0, got {proc.returncode!r}; "
         f"stdout={proc.stdout!r}; stderr={proc.stderr!r}"
     )
-    assert "Self-check" in proc.stdout, (
-        f"stdout must contain the 'Self-check' header; got {proc.stdout!r}"
+    assert "Самопроверка" in proc.stdout, (
+        f"stdout must contain the localized 'Самопроверка' header; got {proc.stdout!r}"
     )
-    assert "passed" in proc.stdout, (
-        f"stdout must mention 'passed' in the summary; got {proc.stdout!r}"
+    assert "пройдено" in proc.stdout, (
+        f"stdout must mention 'пройдено' in the summary; got {proc.stdout!r}"
     )
 
 
@@ -1377,9 +1493,9 @@ def test_cli_self_check_subprocess_mismatch(tmp_path: Path) -> None:
     Builds the same synthetic payload via
     :func:`_build_self_check_payload(perturb_b0_by=100.0)`. The shift of 100
     on ``b0`` is far beyond ``Tolerance.coeff_abs = 1e-3``, so the CLI must
-    surface at least one failed entry, print ``"<N> passed, 1 failed"`` (or
-    more) and exit with status code 1. Stdout must contain ``"failed"`` so
-    operators can grep the summary line.
+    surface at least one failed entry, print ``"<N> пройдено, 1 провалено"``
+    (or more) and exit with status code 1. Stdout must contain ``"провалено"``
+    so operators can grep the summary line.
     """
     payload = _build_self_check_payload(perturb_b0_by=100.0)
     path = tmp_path / "self_check_bad.json"
@@ -1391,8 +1507,8 @@ def test_cli_self_check_subprocess_mismatch(tmp_path: Path) -> None:
         f"--self-check on a perturbed payload must exit 1, got "
         f"{proc.returncode!r}; stdout={proc.stdout!r}; stderr={proc.stderr!r}"
     )
-    assert "failed" in proc.stdout, (
-        f"stdout must contain 'failed' in the summary; got {proc.stdout!r}"
+    assert "провалено" in proc.stdout, (
+        f"stdout must contain 'провалено' in the summary; got {proc.stdout!r}"
     )
 
 # ---- Core vs extended: workbook split + simplified (no-extended) mode ---------
@@ -1524,11 +1640,12 @@ def test_verify_simplified_mode_checks_only_core_fields() -> None:
     }
 
 
-def test_verify_simplified_mode_skips_optional_sheets() -> None:
-    """In simplified mode the G-tests and the per-row output are not checked.
+def test_verify_simplified_mode_keeps_grubbs_and_skips_output_rows() -> None:
+    """Simplified mode reports the Grubbs block but not the per-row output.
 
-    The reference file provides them, but they are optional fields — the
-    simplified mode reports the main (core) fields only.
+    A core-only workbook still carries a ``grubbs`` sheet, and the criterion
+    is part of the core method: the simplified checklist must show it. The
+    ``output_rows`` block stays extended-only.
     """
     from nts.checker import MODE_SIMPLIFIED, verify
 
@@ -1537,13 +1654,19 @@ def test_verify_simplified_mode_skips_optional_sheets() -> None:
     result = verify(actual, full_expected, mode=MODE_SIMPLIFIED)
 
     names = {e.name for e in result.entries}
-    assert not any(name.startswith("g_tests") for name in names)
+    assert any(name.startswith("g_tests") for name in names), (
+        "the Grubbs block must be reported in the simplified mode"
+    )
     assert not any(name.startswith("output_rows") for name in names)
     assert names == {
         "coefficients.b0", "coefficients.b1", "coefficients.b2",
         "coefficients_v.b0", "coefficients_v.b1", "coefficients_v.b2",
         "t_tests.t0", "t_tests.t1", "t_tests.t2",
         "f_value",
+        "g_tests[row=1].g", "g_tests[row=1].ok",
+        "g_tests[row=2].g", "g_tests[row=2].ok",
+        "g_tests[row=3].g", "g_tests[row=3].ok",
+        "g_tests[row=4].g", "g_tests[row=4].ok",
     }
 
 
@@ -1593,8 +1716,11 @@ def test_cli_self_check_xlsx_without_extended_exits_0(
         f"core-only workbook must exit 0; got {proc.returncode!r}; "
         f"stdout={proc.stdout!r}; stderr={proc.stderr!r}"
     )
-    assert "0 failed" in proc.stdout, (
+    assert "0 провалено" in proc.stdout, (
         f"checklist summary must report no failures; got {proc.stdout!r}"
+    )
+    assert "g_tests" in proc.stdout, (
+        f"the simplified checklist must report the Grubbs block; got {proc.stdout!r}"
     )
 
 
@@ -1618,7 +1744,7 @@ def test_cli_self_check_xlsx_with_extended_exits_0(
         f"full workbook must exit 0; got {proc.returncode!r}; "
         f"stdout={proc.stdout!r}; stderr={proc.stderr!r}"
     )
-    assert "0 failed" in proc.stdout
+    assert "0 провалено" in proc.stdout
 
 
 # ---- Human-readable variable dictionary -------------------------------------
@@ -1707,6 +1833,46 @@ def test_write_self_check_xlsx_round_trips_with_description_column(
     bundle = parse_self_check_bundle(path)
     assert bundle.expected["coefficients"]["b0"] == pytest.approx(1.0)
     assert bundle.expected["equation"] == "Y = b0 + b1·δ1 + b2·δ2"
+
+
+def test_write_self_check_xlsx_localizes_verdict_and_round_trips(
+    tmp_path: Path,
+) -> None:
+    """The RU workbook shows the Russian verdict/status but reads canonically."""
+    import openpyxl
+
+    from nts.checker import (
+        EXTENDED_SHEET_NAME,
+        parse_self_check_bundle,
+        write_self_check_xlsx,
+    )
+
+    result = _full_compute_result_for_xlsx()
+    result["f_result"] = "Hypothesis not rejected"
+    result["g_tests"][0]["ok"] = "not OK"
+
+    path = tmp_path / "ru_report.xlsx"
+    write_self_check_xlsx(
+        path, _tiny_input_xlsx_payload(), result,
+        lang="RU", localize_values=True,
+    )
+
+    wb = openpyxl.load_workbook(path)
+    ext_values = {
+        row[0]: row[1]
+        for row in wb[EXTENDED_SHEET_NAME].iter_rows(min_row=2, values_only=True)
+        if row[0]
+    }
+    assert ext_values["f_result"] == "Гипотеза не отвергается"
+    grubbs_ok = [
+        row[2] for row in wb["grubbs"].iter_rows(min_row=2, values_only=True)
+        if row[0] is not None
+    ]
+    assert grubbs_ok[0] == "не OK"
+
+    bundle = parse_self_check_bundle(path)
+    assert bundle.expected["f_result"] == "Hypothesis not rejected"
+    assert bundle.expected["g_tests"][0]["ok"] == "not OK"
 
 
 def test_print_checklist_includes_description_when_lang_given(

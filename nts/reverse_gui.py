@@ -34,7 +34,14 @@ from .checker import (
 from .core import ComputeResult, InputData, compute
 from .dictionary import describe_entry
 from .gui import DND_AVAILABLE, DND_FILES, TkinterDnD, extract_dropped_path
-from .i18n import DEFAULT_LANGUAGE, I18N, LANGUAGES, normalize_lang
+from .i18n import (
+    DEFAULT_LANGUAGE,
+    I18N,
+    LANGUAGES,
+    localize_check_value,
+    normalize_lang,
+    translate_message,
+)
 
 # Keep the checklist row schema tight: one tuple per visible column. Order
 # matches the Treeview ``columns=`` declaration in :meth:`ReverseApp._build_ui`.
@@ -218,9 +225,10 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
             self.label_dnd_hint.config(text=self.t("dnd_hint"))
         for col, key in self._tree_heading_keys.items():
             self.tree.heading(col, text=self.t(key))
-        # Re-translate the current summary, if any.
+        # Re-translate the rendered checklist, so values and notes follow the
+        # language switch instead of staying in the old locale.
         if self.last_result is not None:
-            self._refresh_summary(self.last_result)
+            self._render_result(self.last_result)
         else:
             self.summary_var.set(self.t("reverse_no_data"))
 
@@ -273,10 +281,10 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
         path = filedialog.askopenfilename(
             title=self.t("reverse_load"),
             filetypes=[
-                ("Self-check files", "*.json;*.xlsx;*.xlsm"),
-                ("JSON", "*.json"),
-                ("Excel", "*.xlsx;*.xlsm"),
-                ("All files", "*.*"),
+                (self.t("filter_self_check_files"), "*.json;*.xlsx;*.xlsm"),
+                (self.t("filter_json"), "*.json"),
+                (self.t("filter_excel"), "*.xlsx;*.xlsm"),
+                (self.t("filter_all"), "*.*"),
             ],
         )
         if not path:
@@ -348,10 +356,16 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
                     icon,
                     entry.name,
                     describe_entry(entry.name, lang),
-                    _format_cell(entry.actual, missing_label),
-                    _format_cell(entry.expected, missing_label),
+                    _format_cell(
+                        localize_check_value(entry.name, entry.actual, lang),
+                        missing_label,
+                    ),
+                    _format_cell(
+                        localize_check_value(entry.name, entry.expected, lang),
+                        missing_label,
+                    ),
                     _format_diff(entry.diff, missing_label),
-                    entry.message,
+                    translate_message(entry.message, lang),
                 ),
                 tags=(tag,),
             )
@@ -391,14 +405,20 @@ class ReverseApp(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[mis
             path = filedialog.asksaveasfilename(
                 title=self.t("reverse_export_title"),
                 defaultextension=".txt",
-                filetypes=[("Text", "*.txt"), ("All files", "*.*")],
+                filetypes=[
+                    (self.t("filter_text"), "*.txt"),
+                    (self.t("filter_all"), "*.*"),
+                ],
             )
             if not path:
                 return
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(f"# {self.t('reverse_title_main')}\n")
                 if self.selected_file.get():
-                    fh.write(f"# source: {self.selected_file.get()}\n")
+                    fh.write(
+                        f"# {self.t('reverse_report_source')}: "
+                        f"{self.selected_file.get()}\n"
+                    )
                 fh.write("#\n")
                 print_checklist(self.last_result, file=fh, lang=self.lang.get())
             messagebox.showinfo(

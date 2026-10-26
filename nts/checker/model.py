@@ -56,6 +56,13 @@ CORE_RESULT_KEYS: tuple[str, ...] = (
     "t_tests.t2",
 )
 
+#: Blocks the simplified mode compares *in addition* to the core keys when the
+#: reference file provides them. The Grubbs criterion is part of the core
+#: method (a gross-error check on the same experiments), so a core-only
+#: workbook that carries a ``grubbs`` sheet reports it instead of silently
+#: dropping the rows. ``output_rows`` stays extended-only.
+SIMPLIFIED_EXTRA_KEYS: tuple[str, ...] = ("g_tests",)
+
 
 @dataclass(frozen=True)
 class SelfCheckBundle:
@@ -63,8 +70,8 @@ class SelfCheckBundle:
 
     ``mode`` is :data:`MODE_FULL` when the reference file declares full
     coverage — a JSON payload, or a workbook carrying an ``extended`` sheet —
-    and :data:`MODE_SIMPLIFIED` for a workbook without that sheet, where only
-    the core keys are compared.
+    and :data:`MODE_SIMPLIFIED` for a workbook without that sheet, where the
+    core keys and (when present) the Grubbs block are compared.
     """
 
     input_data: InputData

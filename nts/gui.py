@@ -11,7 +11,7 @@ from urllib.parse import unquote
 from .checker import write_self_check_xlsx
 from .core import EXPECTED_EXPERIMENTS, Experiment, InputData, compute, fmt3, read_input_file
 from .dictionary import describe
-from .i18n import DEFAULT_LANGUAGE, I18N, LANGUAGES, normalize_lang
+from .i18n import DEFAULT_LANGUAGE, I18N, LANGUAGES, localize_check_value, normalize_lang
 
 try:
     import openpyxl
@@ -311,10 +311,10 @@ class App(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[misc]
         path = filedialog.askopenfilename(
             title=self.t("input_file"),
             filetypes=[
-                ("Input files", "*.json;*.xlsx;*.xlsm"),
-                ("JSON", "*.json"),
-                ("Excel", "*.xlsx;*.xlsm"),
-                ("All files", "*.*"),
+                (self.t("filter_input_files"), "*.json;*.xlsx;*.xlsm"),
+                (self.t("filter_json"), "*.json"),
+                (self.t("filter_excel"), "*.xlsx;*.xlsm"),
+                (self.t("filter_all"), "*.*"),
             ],
         )
         if not path:
@@ -455,7 +455,7 @@ class App(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[misc]
         elif res_code == "rejected":
             res_text = self.t("result_rejected")
         else:
-            res_text = str(result.get("f_result", ""))
+            res_text = str(localize_check_value("f_result", result.get("f_result", ""), lang))
         self._place_value(fisher, 2, 0, res_text, describe("f_result", lang))
 
         btns = ttk.Frame(win, padding=(10, 0, 10, 10))
@@ -465,7 +465,7 @@ class App(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[misc]
 
     def _build_export_payload(self, result: Dict[str, Any]) -> Dict[str, Any]:
         if self.last_input is None:
-            raise ValueError("No input data to export.")
+            raise ValueError(self.t("msg_no_input_data"))
         data = self.last_input
         return {
             "input": {
@@ -496,7 +496,10 @@ class App(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[misc]
             path = filedialog.asksaveasfilename(
                 title=self.t("export_title"),
                 defaultextension=".json",
-                filetypes=[("JSON", "*.json"), ("All files", "*.*")],
+                filetypes=[
+                    (self.t("filter_json"), "*.json"),
+                    (self.t("filter_all"), "*.*"),
+                ],
             )
             if not path:
                 return
@@ -522,20 +525,26 @@ class App(TkinterDnD.Tk if DND_AVAILABLE else tk.Tk):  # type: ignore[misc]
             (matched by ``(delta1, delta2)`` on read).
         """
         if openpyxl is None:
-            messagebox.showerror(self.t("export_error"), "openpyxl not installed")
+            messagebox.showerror(self.t("export_error"), self.t("msg_openpyxl_missing"))
             return
         try:
             if self.last_input is None:
-                raise ValueError("No input data to export.")
+                raise ValueError(self.t("msg_no_input_data"))
             path = filedialog.asksaveasfilename(
                 title=self.t("export_title"),
                 defaultextension=".xlsx",
-                filetypes=[("Excel", "*.xlsx"), ("All files", "*.*")],
+                filetypes=[
+                    (self.t("filter_excel"), "*.xlsx"),
+                    (self.t("filter_all"), "*.*"),
+                ],
             )
             if not path:
                 return
 
-            write_self_check_xlsx(Path(path), self.last_input, result, lang=self.lang.get())
+            write_self_check_xlsx(
+                Path(path), self.last_input, result,
+                lang=self.lang.get(), localize_values=True,
+            )
 
             messagebox.showinfo(self.t("export_title"), self.t("export_done"))
         except Exception as exc:
