@@ -255,7 +255,7 @@ if (-not (Test-Path $AgentsMd -PathType Leaf)) {
 
 ## Для агента
 
-Жизненный цикл MetaAgent v$Version:
+Жизненный цикл MetaAgent v${Version}:
 
 ```
 INIT → ANALYSE → ROADMAP → [DESIGN] → DECOMPOSITION → EXECUTION → METASTATE → HANDOFF
@@ -317,7 +317,7 @@ INIT → ANALYSE → ROADMAP → [DESIGN] → DECOMPOSITION → EXECUTION → ME
 
 ## Для агента
 
-Жизненный цикл MetaAgent v$Version:
+Жизненный цикл MetaAgent v${Version}:
 
 ```
 INIT → ANALYSE → ROADMAP → [DESIGN] → DECOMPOSITION → EXECUTION → METASTATE → HANDOFF
